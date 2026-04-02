@@ -1,7 +1,7 @@
 [workspace]
 members = [
-  "programs/valorem-auction",
-  "programs/valorem-transfer-hook"
+  "contracts/valorem-auction",
+  "contracts/valorem-transfer-hook"
 ]
 resolver = "2"
 

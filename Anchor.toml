@@ -20,4 +20,8 @@ wallet = "~/.config/solana/id.json"
 test = "npm run protocol:test:ts"
 
 [workspace]
+members = [
+  "contracts/valorem-auction",
+  "contracts/valorem-transfer-hook"
+]
 types = "packages/valorem-sdk/src/idl/generated"
