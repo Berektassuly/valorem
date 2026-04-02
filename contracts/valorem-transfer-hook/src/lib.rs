@@ -3,6 +3,7 @@ use anchor_lang::{
     system_program::{create_account, CreateAccount},
 };
 use anchor_spl::token_interface::{Mint, TokenAccount};
+use spl_discriminator::SplDiscriminate;
 use spl_tlv_account_resolution::{
     account::ExtraAccountMeta,
     seeds::Seed,
@@ -132,7 +133,7 @@ pub mod valorem_transfer_hook {
         Ok(())
     }
 
-    #[interface(spl_transfer_hook_interface::execute)]
+    #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
     pub fn transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
         let permit = &mut ctx.accounts.permit;

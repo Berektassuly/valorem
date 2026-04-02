@@ -9,6 +9,9 @@ crate-type = ["cdylib", "lib"]
 name = "valorem_auction"
 
 [features]
+anchor-debug = ["anchor-lang/anchor-debug", "anchor-spl/anchor-debug"]
+custom-heap = []
+custom-panic = []
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
@@ -22,3 +25,6 @@ anchor-spl = { workspace = true }
 sha2 = { workspace = true }
 spl-transfer-hook-interface = { workspace = true }
 valorem-transfer-hook = { path = "../valorem-transfer-hook", features = ["cpi"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

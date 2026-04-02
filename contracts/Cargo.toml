@@ -14,6 +14,7 @@ authors = ["Codex <codex@openai.com>"]
 [workspace.dependencies]
 anchor-lang = { version = "0.32.1", features = ["init-if-needed", "interface-instructions"] }
 anchor-spl = { version = "0.32.1", features = ["associated_token", "token", "token_2022", "token_2022_extensions"] }
+spl-discriminator = "0.5.1"
 spl-associated-token-account = "8.0.0"
 spl-token = "9.0.0"
 spl-token-2022 = "10.0.0"
