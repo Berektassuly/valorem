@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { WalletControl } from "@/components/protocol/wallet-control";
+import { useValoremApp } from "@/components/providers/valorem-app-provider";
 import { cn } from "@/lib/utils";
 
 const navigationItems = [
@@ -21,6 +23,7 @@ function isActive(pathname: string, href: string) {
 
 export function SiteHeader() {
   const pathname = usePathname();
+  const { cluster, protocolMode } = useValoremApp();
 
   return (
     <header className="sticky top-0 z-40 border-b border-line/80 bg-paper/85 backdrop-blur-xl">
@@ -48,19 +51,20 @@ export function SiteHeader() {
 
           <div className="flex items-center justify-between gap-3 sm:justify-end">
             <div className="rounded-full border border-line bg-surface px-3 py-2 font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
-              Env / Demo
+              {`Env / ${protocolMode} / ${cluster}`}
             </div>
             <Link
               href="/issuer"
               className="inline-flex items-center justify-center border border-copper bg-copper px-4 py-2 text-[10px] font-medium uppercase tracking-[0.3em] text-white transition-colors hover:bg-copper-soft"
             >
-              Request Access
+              Issuer Desk
             </Link>
           </div>
         </div>
 
-        <nav className="overflow-x-auto">
-          <div className="flex min-w-max items-center gap-2">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
+          <nav className="overflow-x-auto">
+            <div className="flex min-w-max items-center gap-2">
             {navigationItems.map((item) => {
               const active = isActive(pathname, item.href);
 
@@ -79,8 +83,12 @@ export function SiteHeader() {
                 </Link>
               );
             })}
+            </div>
+          </nav>
+          <div className="xl:justify-self-end">
+            <WalletControl />
           </div>
-        </nav>
+        </div>
       </div>
     </header>
   );

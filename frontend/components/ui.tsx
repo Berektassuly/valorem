@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AssetArtwork } from "@/components/asset-artwork";
-import type { AuctionLot, MetricItem } from "@/lib/site-data";
+import type { CatalogAuctionEntry, MetricItem } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 type Tone = "surface" | "muted" | "dark";
@@ -58,7 +58,7 @@ export function Tag({
   tone?: TagTone;
   className?: string;
 }) {
-      return (
+  return (
     <span
       className={cn(
         "inline-flex items-center border px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.24em]",
@@ -68,6 +68,37 @@ export function Tag({
     >
       {children}
     </span>
+  );
+}
+
+export function ActionButton({
+  children,
+  tone = "copper",
+  className,
+  disabled,
+  onClick,
+  type = "button",
+}: {
+  children: ReactNode;
+  tone?: ButtonTone;
+  className?: string;
+  disabled?: boolean;
+  onClick?: () => void;
+  type?: "button" | "submit";
+}) {
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center justify-center border px-4 py-2 font-mono text-[10px] uppercase tracking-[0.3em] transition-colors disabled:cursor-not-allowed disabled:opacity-55",
+        buttonToneClasses[tone],
+        className,
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -273,7 +304,7 @@ export function DataTable({
   );
 }
 
-export function MarketplaceCard({ lot }: { lot: AuctionLot }) {
+export function MarketplaceCard({ lot }: { lot: CatalogAuctionEntry & { status: string; marketMetrics: MetricItem[] } }) {
   return (
     <Panel className="flex h-full flex-col gap-4 p-4 sm:p-5">
       <div className="flex items-center justify-between">
@@ -310,7 +341,7 @@ export function MarketplaceCard({ lot }: { lot: AuctionLot }) {
             Issuer
           </p>
           <p className="mt-2 text-sm font-medium uppercase tracking-[0.16em] text-ink">
-            {lot.issuer}
+            {lot.issuerName}
           </p>
         </div>
         <ActionLink href={`/auctions/${lot.slug}`}>Enter Auction</ActionLink>

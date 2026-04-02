@@ -1,0 +1,23 @@
+[toolchain]
+anchor_version = "0.32.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+valorem_auction = "CL8VHpgrWj3XSLFrSSnDdGTYadh3wgtcixaLvh39CWfe"
+valorem_transfer_hook = "8ps8kraPz7i9XHLkUuvVQdfmEuR6MgT6MBw26Ye6EVSd"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "npm run protocol:test:ts"
+
+[workspace]
+types = "packages/valorem-sdk/src/idl/generated"

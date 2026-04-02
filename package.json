@@ -1,0 +1,19 @@
+{
+  "name": "valorem",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "npm run build --workspace @valorem/sdk",
+    "dev": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace @valorem/sdk && npm run build --workspace frontend",
+    "lint": "npm run lint --workspace @valorem/sdk && npm run lint --workspace frontend",
+    "test": "npm run test --workspace @valorem/sdk && npm run test --workspace frontend",
+    "typecheck": "npm run typecheck --workspace @valorem/sdk && npm run typecheck --workspace frontend",
+    "protocol:build": "anchor build",
+    "protocol:test": "anchor test",
+    "protocol:unit": "cargo test --workspace --lib"
+  }
+}

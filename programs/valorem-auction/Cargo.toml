@@ -1,0 +1,24 @@
+[package]
+name = "valorem-auction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "valorem_auction"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "valorem-transfer-hook/idl-build"]
+
+[dependencies]
+anchor-lang = { workspace = true }
+anchor-spl = { workspace = true }
+sha2 = { workspace = true }
+spl-transfer-hook-interface = { workspace = true }
+valorem-transfer-hook = { path = "../valorem-transfer-hook", features = ["cpi"] }

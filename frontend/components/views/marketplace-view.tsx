@@ -1,3 +1,5 @@
+"use client";
+
 import {
   ActionLink,
   MetricGrid,
@@ -7,43 +9,54 @@ import {
   Tag,
   MarketplaceCard,
 } from "@/components/ui";
-import { marketPulse, marketplaceLots } from "@/lib/site-data";
+import { useValoremApp } from "@/components/providers/valorem-app-provider";
+import { marketplaceDeskNotes } from "@/lib/catalog";
+import { buildMarketplaceLots } from "@/lib/protocol/view-models";
 
 const filterPills = [
   "All sectors",
   "Open books",
   "Closing soon",
-  "Primary issuers",
-  "Settlement ready",
+  "Settlement queue",
+  "Refund eligible",
 ];
 
 export function MarketplaceView() {
+  const { activeAddress, auctions } = useValoremApp();
+  const lots = buildMarketplaceLots(auctions, activeAddress);
+  const settlementCount = auctions.filter((auction) => auction.auction.phase === "settlement").length;
+  const closingSoonCount = auctions.filter((auction) => auction.auction.phase === "bidding").length;
+  const totalVisibleVolume = auctions.reduce(
+    (sum, auction) => sum + (auction.auction.rankedBidders[0]?.amount ?? auction.auction.reservePrice),
+    0n,
+  );
+
   return (
     <div className="space-y-10">
       <PageIntro
         eyebrow="Marketplace / Explorer"
         title="Real world asset auction terminal."
-        description="Browse live institutional books across core real estate, infrastructure, cultural inventory, and specialty issuances. Every surface is rendered as a high-fidelity presentation state only, preserving the severe editorial tone of the Valorem desk."
+        description="Browse live commit-reveal books across core real estate, infrastructure, culture-linked inventory, and specialty rights. The editorial shell stays intact, but the cards, rails, and wallet prompts now read from protocol state rather than static mock copy."
         aside={
           <Panel className="w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between">
-              <Tag tone="dark">Live window</Tag>
+              <Tag tone="dark">Live protocol</Tag>
               <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
-                Session / 04
+                Session / 06
               </p>
             </div>
             <MetricGrid
               columns={2}
               items={[
-                { label: "Open auctions", value: "06" },
-                { label: "Volume shown", value: "$182M", accent: true },
-                { label: "Settlement mode", value: "T+2" },
-                { label: "Verified issuers", value: "18" },
+                { label: "Open auctions", value: String(auctions.length) },
+                { label: "Visible volume", value: `$${(Number(totalVisibleVolume) / 1_000_000_000_000).toFixed(1)}M`, accent: true },
+                { label: "Settlement queue", value: String(settlementCount) },
+                { label: "Closing books", value: String(closingSoonCount) },
               ]}
             />
             <p className="text-sm leading-6 text-muted">
-              Premium listings are surfaced with conservative chrome, strong data
-              hierarchy, and restrained copper signals for decisive actions.
+              Wallet actions are phase-aware, reveal secrets are stored locally per auction,
+              and settlement paths remain gated by issuer-side compliance approval.
             </p>
           </Panel>
         }
@@ -56,12 +69,12 @@ export function MarketplaceView() {
           ))}
           <div className="ml-auto flex items-center gap-3 text-[10px] uppercase tracking-[0.28em] text-muted">
             <span>Sort</span>
-            <Tag tone="copper">Closing soon</Tag>
+            <Tag tone="copper">Protocol priority</Tag>
           </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {marketplaceLots.map((lot) => (
+          {lots.map((lot) => (
             <MarketplaceCard key={lot.slug} lot={lot} />
           ))}
         </div>
@@ -72,11 +85,40 @@ export function MarketplaceView() {
           <SectionHeading
             eyebrow="Market pulse"
             title="Current desk activity"
-            description="A restrained secondary section preserves the negative space of the layout while carrying enough information density to feel like a premium trading interface."
-            action={<ActionLink href="/dashboard" tone="ghost">View Dashboard</ActionLink>}
+            description="The secondary section is still sparse and editorial, but the metrics now track actual auction phases, deposits held, and settlement queues."
+            action={
+              <ActionLink href="/dashboard" tone="ghost">
+                View Dashboard
+              </ActionLink>
+            }
           />
           <div className="grid gap-4 md:grid-cols-2">
-            {marketPulse.map((pulse) => (
+            {[
+              {
+                title: "Closing windows",
+                badge: `${closingSoonCount} active`,
+                copy: "Bidding books remain open until the reveal transition is advanced, with deposits already escrowed for committed participants.",
+                tone: "copper" as const,
+              },
+              {
+                title: "Issuer review",
+                badge: `${settlementCount} in queue`,
+                copy: "Settlement candidates are visible, but ownership is still blocked until the issuer records compliance approval.",
+                tone: "dark" as const,
+              },
+              {
+                title: "Refund gating",
+                badge: "Fallback aware",
+                copy: "Revealed non-winning bidders only recover deposits after they are no longer viable fallback candidates.",
+                tone: "default" as const,
+              },
+              {
+                title: "Wallet mode",
+                badge: activeAddress ? "Connected" : "Standby",
+                copy: "Users can connect a wallet or use the built-in demo wallet to exercise the full commit, reveal, settlement, and refund flow locally.",
+                tone: "copper" as const,
+              },
+            ].map((pulse) => (
               <div key={pulse.title} className="border border-line bg-surface p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold uppercase tracking-[0.14em] text-ink">
@@ -94,14 +136,10 @@ export function MarketplaceView() {
           <SectionHeading
             eyebrow="Clearing tape"
             title="Desk notes"
-            description="Compact operational copy mirrors the small typographic fragments visible in the Figma compositions."
+            description="Protocol-aware notes stay close to the original small-format composition without turning into a feed-heavy product surface."
           />
           <div className="space-y-4">
-            {[
-              "Metropolitan Core Office Complex received two additional institutional indications above reserve.",
-              "Prime Manhattan Equity Token #42 remains in supervised settlement with payment window held open.",
-              "Logistics Hub Rotterdam April opened a secondary tranche preview for strategic accounts.",
-            ].map((item) => (
+            {marketplaceDeskNotes.map((item) => (
               <div key={item} className="border border-line bg-surface px-4 py-3">
                 <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
                   Desk memo

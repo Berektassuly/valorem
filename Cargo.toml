@@ -1,0 +1,34 @@
+[workspace]
+members = [
+  "programs/valorem-auction",
+  "programs/valorem-transfer-hook"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+authors = ["Codex <codex@openai.com>"]
+
+[workspace.dependencies]
+anchor-lang = { version = "0.32.1", features = ["init-if-needed", "interface-instructions"] }
+anchor-spl = { version = "0.32.1", features = ["associated_token", "token", "token_2022", "token_2022_extensions"] }
+spl-associated-token-account = "8.0.0"
+spl-token = "9.0.0"
+spl-token-2022 = "10.0.0"
+spl-transfer-hook-interface = "2.1.0"
+spl-tlv-account-resolution = "0.11.1"
+spl-type-length-value = "0.9.1"
+sha2 = "0.10.9"
+thiserror = "2.0.17"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1

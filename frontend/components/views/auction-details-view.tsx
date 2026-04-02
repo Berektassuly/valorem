@@ -1,4 +1,8 @@
+"use client";
+
 import { AssetArtwork } from "@/components/asset-artwork";
+import { AuctionActionPanel } from "@/components/protocol/auction-action-panel";
+import { useValoremApp } from "@/components/providers/valorem-app-provider";
 import {
   ActionLink,
   DataTable,
@@ -8,17 +12,26 @@ import {
   SectionHeading,
   Tag,
 } from "@/components/ui";
-import type { AuctionDetail } from "@/lib/site-data";
+import { formatCountDown, formatPhaseLabel, formatShortUsd, formatUsd } from "@/lib/protocol/format";
+import { buildAuctionLedger } from "@/lib/protocol/view-models";
 
-export function AuctionDetailsView({ detail }: { detail: AuctionDetail }) {
+export function AuctionDetailsView({ slug }: { slug: string }) {
+  const { getAuction, getWalletAuctionState } = useValoremApp();
+  const auction = getAuction(slug);
+
+  if (!auction) {
+    return null;
+  }
+
+  const walletState = getWalletAuctionState(slug);
+  const currentBid = walletState.currentBid ?? auction.auction.reservePrice;
   const ledgerColumns = [
     { key: "step", label: "Step" },
     { key: "window", label: "Window" },
     { key: "amount", label: "Amount", align: "right" as const },
     { key: "status", label: "Status", align: "right" as const },
   ];
-
-  const ledgerRows = detail.ledger.map((row) => ({
+  const ledgerRows = buildAuctionLedger(auction).map((row) => ({
     id: row.step,
     step: (
       <div className="space-y-1">
@@ -38,18 +51,35 @@ export function AuctionDetailsView({ detail }: { detail: AuctionDetail }) {
   return (
     <div className="space-y-8">
       <PageIntro
-        eyebrow={detail.eyebrow}
-        title={detail.title}
-        description={detail.summary}
+        eyebrow={auction.catalog.editorial.eyebrow}
+        title={auction.catalog.title}
+        description={auction.catalog.editorial.summary}
         aside={
           <Panel className="w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between">
-              <Tag tone="dark">{detail.status}</Tag>
+              <Tag tone="dark">{formatPhaseLabel(auction.auction.phase)}</Tag>
               <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
-                Room / {detail.room}
+                Auction / {auction.catalog.lot}
               </p>
             </div>
-            <MetricGrid columns={2} items={detail.bidDeskMetrics} />
+            <MetricGrid
+              columns={2}
+              items={[
+                { label: "Current bid", value: formatShortUsd(currentBid), accent: true },
+                { label: "Reserve", value: formatShortUsd(auction.auction.reservePrice) },
+                { label: "Deposit", value: formatShortUsd(auction.auction.depositAmount) },
+                {
+                  label: auction.auction.phase === "settlement" ? "Window" : "Closes",
+                  value:
+                    auction.auction.phase === "settlement"
+                      ? formatCountDown(
+                          auction.auction.activeSettlementStartedAt +
+                            auction.auction.settlementWindow,
+                        )
+                      : formatCountDown(auction.auction.biddingEndAt),
+                },
+              ]}
+            />
           </Panel>
         }
       />
@@ -57,68 +87,41 @@ export function AuctionDetailsView({ detail }: { detail: AuctionDetail }) {
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.18fr)_380px]">
         <Panel className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
-            <Tag tone="copper">{detail.category}</Tag>
-            <Tag>{detail.location}</Tag>
-            <Tag>{detail.issuer}</Tag>
+            <Tag tone="copper">{auction.catalog.category}</Tag>
+            <Tag>{auction.catalog.location}</Tag>
+            <Tag>{auction.catalog.issuerName}</Tag>
           </div>
           <AssetArtwork
-            variant={detail.artwork}
-            label={detail.heroLabel}
+            variant={auction.catalog.artwork}
+            label={auction.catalog.editorial.heroLabel}
             className="h-72 sm:h-[430px]"
           />
-          <MetricGrid items={detail.auctionMetrics} />
+          <MetricGrid
+            items={[
+              { label: "Current clearing bid", value: formatUsd(currentBid), accent: true },
+              { label: "Reserve", value: formatUsd(auction.auction.reservePrice) },
+              { label: "Asset units", value: auction.auction.assetAmount.toString() },
+              { label: "Participant cap", value: String(auction.auction.maxBidders) },
+            ]}
+          />
         </Panel>
 
         <div className="space-y-6">
-          <Panel className="space-y-5">
-            <SectionHeading
-              eyebrow="Bid desk"
-              title="Live auction control"
-              description="The right rail stays compact and decisive, using sharp black and copper emphasis for the active book."
-            />
-            <div className="space-y-3">
-              <div className="border border-line bg-surface-muted p-4">
-                <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
-                  Clearing bid
-                </p>
-                <p className="mt-3 text-3xl font-semibold uppercase tracking-[-0.05em] text-copper">
-                  {detail.clearingBid}
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {detail.bidNotes.map((note) => (
-                  <div key={note.label} className="border border-line bg-surface p-4">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted">
-                      {note.label}
-                    </p>
-                    <p className="mt-3 text-sm font-semibold uppercase tracking-[0.12em] text-ink">
-                      {note.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <ActionLink href="/dashboard">Place Bid</ActionLink>
-              <ActionLink href="/issuer" tone="ghost">
-                Review Issuer
-              </ActionLink>
-            </div>
-          </Panel>
+          <AuctionActionPanel slug={slug} />
 
           <Panel tone="dark" className="space-y-4">
             <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/70">
-              Congratulations
+              Settlement threshold
             </p>
             <div className="flex items-end justify-between gap-4">
               <div>
                 <p className="max-w-xs text-sm leading-6 text-white/80">
-                  Settlement instructions remain intentionally simple and sharply
-                  framed, echoing the black banner state from the design.
+                  Ownership remains blocked until compliance approval is recorded
+                  and the active settlement candidate completes payment.
                 </p>
               </div>
               <p className="text-4xl font-semibold uppercase tracking-[-0.05em] text-copper-soft">
-                {detail.settlementAmount}
+                {formatShortUsd(auction.auction.reservePrice)}
               </p>
             </div>
           </Panel>
@@ -127,7 +130,9 @@ export function AuctionDetailsView({ detail }: { detail: AuctionDetail }) {
             <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
               Issuer note
             </p>
-            <p className="text-sm leading-6 text-ink">{detail.issuerNote}</p>
+            <p className="text-sm leading-6 text-ink">
+              {auction.catalog.editorial.issuerNote}
+            </p>
           </Panel>
         </div>
       </section>
@@ -136,18 +141,29 @@ export function AuctionDetailsView({ detail }: { detail: AuctionDetail }) {
         <Panel className="space-y-5">
           <SectionHeading
             eyebrow="Settlement state"
-            title={detail.secondaryTitle}
-            description={detail.secondarySummary}
+            title={auction.catalog.editorial.secondaryTitle}
+            description={auction.catalog.editorial.secondarySummary}
           />
           <AssetArtwork
-            variant={detail.secondaryArtwork}
+            variant={auction.catalog.editorial.secondaryArtwork}
             label="Secondary certificate"
             className="h-64 sm:h-[300px]"
           />
-          <MetricGrid columns={2} items={detail.secondaryMetrics} />
+          <MetricGrid
+            columns={2}
+            items={[
+              { label: "Deposits held", value: formatUsd(auction.auction.totalDepositsHeld) },
+              { label: "Slashed", value: formatUsd(auction.auction.totalSlashed), accent: true },
+              { label: "Proceeds", value: formatUsd(auction.auction.totalProceeds) },
+              {
+                label: "Candidate",
+                value: walletState.isLeadingCandidate ? "This wallet" : "Issuer controlled",
+              },
+            ]}
+          />
           <div className="flex flex-wrap gap-3">
             <ActionLink href="/dashboard" tone="ink">
-              Wire Instructions
+              Wallet Dashboard
             </ActionLink>
             <ActionLink href="/marketplace" tone="ghost">
               Return To Desk
@@ -160,10 +176,10 @@ export function AuctionDetailsView({ detail }: { detail: AuctionDetail }) {
             <SectionHeading
               eyebrow="Due diligence"
               title="Room notes"
-              description="Legal, underwriting, and operational checkpoints are presented as controlled text blocks rather than feature-heavy widgets."
+              description="Compliance, underwriting, and payment rails are kept readable and controlled rather than turned into widget-heavy product chrome."
             />
             <div className="space-y-3">
-              {detail.diligence.map((item) => (
+              {auction.catalog.editorial.diligence.map((item) => (
                 <div key={item} className="border border-line bg-surface p-4">
                   <p className="text-sm leading-6 text-ink">{item}</p>
                 </div>
@@ -175,7 +191,7 @@ export function AuctionDetailsView({ detail }: { detail: AuctionDetail }) {
             <SectionHeading
               eyebrow="Settlement ledger"
               title="Post-auction flow"
-              description="A severe table layout keeps the detail view feeling closer to an institutional terminal than a consumer product."
+              description="The ledger remains severe and compact, but it now reflects actual auction phase, ranking, and proceeds state."
             />
             <DataTable columns={ledgerColumns} rows={ledgerRows} />
           </Panel>
