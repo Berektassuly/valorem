@@ -77,8 +77,8 @@ jobs:
 
       - name: Anchor build
         run: |
-          docker compose run --rm workspace bash -lc "NO_DNA=1 npm install && NO_DNA=1 anchor build"
+          docker compose run --rm workspace bash -lc "NO_DNA=1 npm install && NO_DNA=1 npm run protocol:build"
 
       - name: Anchor test
         run: |
-          docker compose run --rm workspace bash -lc "NO_DNA=1 npm install && NO_DNA=1 anchor test"
+          docker compose run --rm workspace bash -lc "NO_DNA=1 npm install && NO_DNA=1 npm run protocol:test"

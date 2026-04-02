@@ -17,11 +17,11 @@ cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "npm run protocol:test:ts"
+test = "npm run test:ts"
 
 [workspace]
 members = [
-  "contracts/valorem-auction",
-  "contracts/valorem-transfer-hook"
+  "valorem-auction",
+  "valorem-transfer-hook"
 ]
-types = "packages/valorem-sdk/src/idl/generated"
+types = "../packages/valorem-sdk/src/idl/generated"

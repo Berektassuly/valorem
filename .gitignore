@@ -3,17 +3,26 @@
 .vscode/
 
 node_modules/
+frontend/package-lock.json
+contracts/package-lock.json
+packages/*/package-lock.json
 
 target/
 .anchor/
 .avm/
 .cargo/
+contracts/target/
+contracts/.anchor/
+contracts/test-ledger/
 
 frontend/.next/
 frontend/node_modules/
 frontend/coverage/
+frontend/.data/
 packages/*/dist/
+packages/*/node_modules/
 packages/*/coverage/
+contracts/node_modules/
 
 *.log
 *.tmp

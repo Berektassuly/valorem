@@ -8,19 +8,19 @@ You are expected to operate as an owner, not as an advisor. Your responsibility 
 
 ## Mandatory Source of Truth
 
-Before making any changes, read the following document in the repository root:
+Before making any changes, read the following document:
 
-- `TECHNICAL_IMPLEMENTATION_CORE.md`
+- `docs/architecture/technical-implementation-core.md`
 
 Use that document as the primary implementation brief.
 
 For product context, also read:
 
-- `IDEA_CORE.md`
+- `docs/architecture/idea-core.md`
 
 ## Task
 
-Implement the Valorem system described in `TECHNICAL_IMPLEMENTATION_CORE.md`.
+Implement the Valorem system described in `docs/architecture/technical-implementation-core.md`.
 
 Your objective is to convert the current repository from a design-oriented frontend baseline into a technically credible protocol implementation with:
 
@@ -90,7 +90,7 @@ When the specification leaves room for interpretation, choose the most technical
 ## Execution Requirements
 
 1. Read the repository first.
-2. Read `TECHNICAL_IMPLEMENTATION_CORE.md` fully before implementation.
+2. Read `docs/architecture/technical-implementation-core.md` fully before implementation.
 3. Identify the current project structure and decide how the Solana program and frontend client should coexist in this repository.
 4. Implement the system end-to-end rather than stopping at planning.
 5. Reuse the existing `frontend/` design shell instead of replacing it.
@@ -101,7 +101,7 @@ When the specification leaves room for interpretation, choose the most technical
 
 - The frontend implementation must remain based on `Next.js`.
 - The current `frontend/` visual system should be preserved and extended, not discarded.
-- The technical specification in `TECHNICAL_IMPLEMENTATION_CORE.md` takes precedence over ad hoc simplifications.
+- The technical specification in `docs/architecture/technical-implementation-core.md` takes precedence over ad hoc simplifications.
 - If some external infrastructure is unavailable, still implement the internal architecture cleanly and document the gap precisely.
 
 ## Expected Deliverable
@@ -118,7 +118,7 @@ Deliver a working repository state that reflects the technical plan, with:
 
 The task is complete only when all of the following are true:
 
-- the agent has read and followed `TECHNICAL_IMPLEMENTATION_CORE.md`
+- the agent has read and followed `docs/architecture/technical-implementation-core.md`
 - the repository contains a meaningful implementation of the specified architecture
 - the frontend is no longer purely static presentation
 - critical auction and settlement flows are represented in code, not only in prose

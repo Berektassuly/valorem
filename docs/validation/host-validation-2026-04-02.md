@@ -2,6 +2,11 @@
 
 ## Host checks completed on 2026-04-02
 
+This validation record was captured before the workspace cleanup moved the Rust and Anchor ownership files into `contracts/`. The equivalent protocol entry points are now:
+
+- `npm run protocol:*` from the repository root
+- `npm run build`, `npm run unit`, and `npm run test` from `contracts/`
+
 The following commands were run successfully from `C:\Users\berek\valorem`:
 
 ```powershell
@@ -31,13 +36,13 @@ Full Anchor program compilation and `anchor test` are not available on the nativ
 Direct host attempts:
 
 ```powershell
-$env:NO_DNA='1'; anchor build
+$env:NO_DNA='1'; npm run protocol:build
 solana --version
 ```
 
 Results:
 
-- `anchor build` failed with `no such command: build-sbf`
+- `npm run protocol:build` failed because `anchor build` could not find the required `build-sbf` command
 - `solana --version` failed because `solana` is not installed on the host
 
 This confirms the native host is missing the Solana CLI toolchain required for SBF compilation.
@@ -54,8 +59,8 @@ Intended full protocol validation flow:
 
 ```bash
 docker compose build workspace
-docker compose run --rm workspace bash -lc "NO_DNA=1 npm install && NO_DNA=1 anchor build"
-docker compose run --rm workspace bash -lc "NO_DNA=1 npm install && NO_DNA=1 anchor test"
+docker compose run --rm workspace bash -lc "NO_DNA=1 npm install && NO_DNA=1 npm run protocol:build"
+docker compose run --rm workspace bash -lc "NO_DNA=1 npm install && NO_DNA=1 npm run protocol:test"
 ```
 
 Container attempt status on this machine:

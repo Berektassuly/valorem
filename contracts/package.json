@@ -1,0 +1,11 @@
+{
+  "name": "@valorem/contracts",
+  "private": true,
+  "scripts": {
+    "build": "anchor build",
+    "test": "anchor test",
+    "test:ts": "node -e \"console.log('No TypeScript integration tests are configured under contracts/tests yet.')\"",
+    "unit": "cargo test --workspace --lib",
+    "clean": "anchor clean"
+  }
+}
