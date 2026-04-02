@@ -39,10 +39,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Linux lightningcss native binary
+      - name: Install Linux frontend native binaries
         run: |
           LIGHTNINGCSS_VERSION="$(node -p "require('./frontend/node_modules/lightningcss/package.json').version")"
-          npm install --workspace frontend --no-save "lightningcss-linux-x64-gnu@${LIGHTNINGCSS_VERSION}"
+          TAILWIND_OXIDE_VERSION="$(node -p "require('./frontend/node_modules/@tailwindcss/oxide/package.json').version")"
+          npm install --workspace frontend --no-save \
+            "lightningcss-linux-x64-gnu@${LIGHTNINGCSS_VERSION}" \
+            "@tailwindcss/oxide-linux-x64-gnu@${TAILWIND_OXIDE_VERSION}"
 
       - name: Lint
         run: npm run lint
