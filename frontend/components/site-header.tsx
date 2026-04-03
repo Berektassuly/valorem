@@ -27,7 +27,7 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-line/80 bg-paper/85 backdrop-blur-xl">
-      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 px-4 pt-2 pb-4 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <Link href="/marketplace" className="flex items-center gap-3">
@@ -44,7 +44,7 @@ export function SiteHeader() {
               </div>
             </Link>
             <div className="hidden h-10 w-px bg-line lg:block" />
-            <div className="hidden text-[10px] uppercase tracking-[0.34em] text-muted lg:block">
+            <div className="hidden whitespace-nowrap text-[10px] uppercase tracking-[0.34em] text-muted lg:block">
               Closed network / invitation only / rwa settlement desk
             </div>
           </div>
