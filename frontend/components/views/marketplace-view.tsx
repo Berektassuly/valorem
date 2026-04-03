@@ -1,5 +1,3 @@
-"use client";
-
 import {
   ActionLink,
   MetricGrid,
@@ -9,142 +7,161 @@ import {
   Tag,
   MarketplaceCard,
 } from "@/components/ui";
-import { useValoremApp } from "@/components/providers/valorem-app-provider";
-import { marketplaceDeskNotes } from "@/lib/catalog";
-import { buildMarketplaceLots } from "@/lib/protocol/view-models";
+import type { AuctionLot } from "@/lib/marketplace/types";
+import { buildMarketplaceCardLot } from "@/lib/marketplace/view-models";
 
-const filterPills = [
-  "All sectors",
-  "Open books",
-  "Closing soon",
-  "Settlement queue",
-  "Refund eligible",
-];
+type MarketplaceViewProps = {
+  lots: AuctionLot[];
+  hasDatabaseError?: boolean;
+};
 
-export function MarketplaceView() {
-  const { activeAddress, auctions } = useValoremApp();
-  const lots = buildMarketplaceLots(auctions, activeAddress);
-  const settlementCount = auctions.filter((auction) => auction.auction.phase === "settlement").length;
-  const closingSoonCount = auctions.filter((auction) => auction.auction.phase === "bidding").length;
-  const totalVisibleVolume = auctions.reduce(
-    (sum, auction) => sum + (auction.auction.rankedBidders[0]?.amount ?? auction.auction.reservePrice),
-    0n,
-  );
+export function MarketplaceView({
+  lots,
+  hasDatabaseError = false,
+}: MarketplaceViewProps) {
+  const settlementCount = lots.filter((lot) => lot.status === "settlement").length;
+  const revealCount = lots.filter((lot) => lot.status === "reveal").length;
+  const biddingCount = lots.filter((lot) => lot.status === "bidding").length;
+  const cards = lots.map(buildMarketplaceCardLot);
 
   return (
     <div className="space-y-10">
       <PageIntro
-        eyebrow="Marketplace / Explorer"
-        title="Real world asset auction terminal."
-        description="Browse live commit-reveal books across core real estate, infrastructure, culture-linked inventory, and specialty rights. The editorial shell stays intact, but the cards, rails, and wallet prompts now read from protocol state rather than static mock copy."
+        eyebrow="Marketplace / Dynamic lots"
+        title="Real world asset auction marketplace."
+        description="The public storefront is now sourced from PostgreSQL rather than a hardcoded catalog. Active lots remain visible while completed settlements are filtered out and moved into the winning wallet’s private profile."
         aside={
           <Panel className="w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between">
-              <Tag tone="dark">Live protocol</Tag>
+              <Tag tone="dark">Live marketplace</Tag>
               <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
-                Session / 06
+                Lots / {lots.length}
               </p>
             </div>
             <MetricGrid
               columns={2}
               items={[
-                { label: "Open auctions", value: String(auctions.length) },
-                { label: "Visible volume", value: `$${(Number(totalVisibleVolume) / 1_000_000_000_000).toFixed(1)}M`, accent: true },
-                { label: "Settlement queue", value: String(settlementCount) },
-                { label: "Closing books", value: String(closingSoonCount) },
+                { label: "Visible lots", value: String(lots.length), accent: true },
+                { label: "Bidding", value: String(biddingCount) },
+                { label: "Reveal", value: String(revealCount) },
+                { label: "Settlement", value: String(settlementCount) },
               ]}
             />
             <p className="text-sm leading-6 text-muted">
-              Wallet actions are phase-aware, reveal secrets are stored locally per auction,
-              and settlement paths remain gated by issuer-side compliance approval.
+              Sign in with Solana to create lots and unlock the private profile
+              route for purchased inventory.
             </p>
           </Panel>
         }
       />
 
+      {hasDatabaseError ? (
+        <Panel tone="dark" className="space-y-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/70">
+            Database configuration
+          </p>
+          <p className="text-sm leading-6 text-white/80">
+            The marketplace could not reach PostgreSQL. Add `DATABASE_URL` and
+            reload to enable dynamic lots, profile filtering, and authenticated
+            creation.
+          </p>
+        </Panel>
+      ) : null}
+
       <section className="space-y-6">
         <div className="flex flex-wrap items-center gap-2 border-y border-line/70 py-4">
-          {filterPills.map((pill) => (
-            <Tag key={pill}>{pill}</Tag>
-          ))}
-          <div className="ml-auto flex items-center gap-3 text-[10px] uppercase tracking-[0.28em] text-muted">
-            <span>Sort</span>
-            <Tag tone="copper">Protocol priority</Tag>
+          <Tag>Database first</Tag>
+          <Tag>Base64 images</Tag>
+          <Tag>SIWS protected</Tag>
+          <Tag tone="copper">Completed lots hidden</Tag>
+          <div className="ml-auto">
+            <ActionLink href="/issuer" tone="ghost">
+              Create A Lot
+            </ActionLink>
           </div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {lots.map((lot) => (
-            <MarketplaceCard key={lot.slug} lot={lot} />
-          ))}
-        </div>
+        {cards.length > 0 ? (
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {cards.map((card) => (
+              <MarketplaceCard key={card.slug} lot={card} />
+            ))}
+          </div>
+        ) : (
+          <Panel className="space-y-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
+              No active lots
+            </p>
+            <p className="text-sm leading-6 text-muted">
+              No linked auctions are currently visible. Sign in and create the
+              first lot to seed the marketplace.
+            </p>
+          </Panel>
+        )}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_380px]">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.12fr)_360px]">
         <Panel className="space-y-5">
           <SectionHeading
-            eyebrow="Market pulse"
-            title="Current desk activity"
-            description="The secondary section is still sparse and editorial, but the metrics now track actual auction phases, deposits held, and settlement queues."
-            action={
-              <ActionLink href="/dashboard" tone="ghost">
-                View Dashboard
-              </ActionLink>
-            }
+            eyebrow="Display logic"
+            title="Public by default, private on completion"
+            description="The storefront now reflects database-level filtering. Once settlement completes, the lot disappears from this surface and becomes visible only inside the authenticated winner’s profile."
           />
           <div className="grid gap-4 md:grid-cols-2">
             {[
               {
-                title: "Closing windows",
-                badge: `${closingSoonCount} active`,
-                copy: "Bidding books remain open until the reveal transition is advanced, with deposits already escrowed for committed participants.",
-                tone: "copper" as const,
+                title: "Storefront query",
+                badge: "status != completed",
+                copy: "Marketplace reads only active lots so completed inventory is removed instantly after the cached protocol status updates.",
               },
               {
-                title: "Issuer review",
-                badge: `${settlementCount} in queue`,
-                copy: "Settlement candidates are visible, but ownership is still blocked until the issuer records compliance approval.",
-                tone: "dark" as const,
+                title: "Profile query",
+                badge: "winner scoped",
+                copy: "The profile route loads only lots where status is completed and the settled bidder matches the authenticated wallet.",
               },
               {
-                title: "Refund gating",
-                badge: "Fallback aware",
-                copy: "Revealed non-winning bidders only recover deposits after they are no longer viable fallback candidates.",
-                tone: "default" as const,
+                title: "Create flow",
+                badge: "DB -> chain -> link",
+                copy: "New lots are stored in Postgres first, initialized on Solana second, then linked back to the database record with the auction address.",
               },
               {
-                title: "Wallet mode",
-                badge: activeAddress ? "Connected" : "Standby",
-                copy: "Users can connect a wallet or use the built-in demo wallet to exercise the full commit, reveal, settlement, and refund flow locally.",
-                tone: "copper" as const,
+                title: "Media storage",
+                badge: "Base64 in Postgres",
+                copy: "Images remain inside the relational model for MVP speed, avoiding external object storage while keeping the app deployable as a compact full-stack service.",
               },
-            ].map((pulse) => (
-              <div key={pulse.title} className="border border-line bg-surface p-4">
+            ].map((item) => (
+              <div key={item.title} className="border border-line bg-surface p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold uppercase tracking-[0.14em] text-ink">
-                    {pulse.title}
+                    {item.title}
                   </p>
-                  <Tag tone={pulse.tone}>{pulse.badge}</Tag>
+                  <Tag tone="copper">{item.badge}</Tag>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-muted">{pulse.copy}</p>
+                <p className="mt-3 text-sm leading-6 text-muted">{item.copy}</p>
               </div>
             ))}
           </div>
         </Panel>
 
-        <Panel className="space-y-5" tone="muted">
+        <Panel tone="muted" className="space-y-5">
           <SectionHeading
-            eyebrow="Clearing tape"
-            title="Desk notes"
-            description="Protocol-aware notes stay close to the original small-format composition without turning into a feed-heavy product surface."
+            eyebrow="Next step"
+            title="Seller studio"
+            description="Lot creation now lives behind Sign-In With Solana and uses the connected wallet both for the authenticated session and the on-chain initialization transaction."
+            action={
+              <ActionLink href="/issuer" tone="ink">
+                Open Seller Studio
+              </ActionLink>
+            }
           />
           <div className="space-y-4">
-            {marketplaceDeskNotes.map((item) => (
+            {[
+              "Connect Phantom or another Wallet Standard wallet.",
+              "Sign the nonce challenge to mint an authenticated session cookie.",
+              "Upload an image, write the title and description, and initialize the auction on chain.",
+            ].map((item) => (
               <div key={item} className="border border-line bg-surface px-4 py-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
-                  Desk memo
-                </p>
-                <p className="mt-2 text-sm leading-6 text-ink">{item}</p>
+                <p className="text-sm leading-6 text-ink">{item}</p>
               </div>
             ))}
           </div>
@@ -153,3 +170,4 @@ export function MarketplaceView() {
     </div>
   );
 }
+

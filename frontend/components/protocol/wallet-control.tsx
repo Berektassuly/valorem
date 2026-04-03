@@ -40,20 +40,31 @@ function WalletDisconnectAction({ wallet }: { wallet: UiWallet }) {
   );
 }
 
+function formatAddress(value: string | null) {
+  if (!value) {
+    return "No wallet";
+  }
+
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
 export function WalletControl() {
   const {
     activeAddress,
+    authSession,
+    authenticate,
     connectedWallet,
     disableDemoWallet,
     enableDemoWallet,
     feedback,
+    isAuthenticating,
+    signOut,
     walletMode,
     wallets,
   } = useValoremApp();
 
-  const addressLabel = activeAddress
-    ? `${activeAddress.slice(0, 4)}...${activeAddress.slice(-4)}`
-    : "No wallet";
+  const sessionMatchesWallet =
+    authSession && activeAddress ? authSession.walletAddress === activeAddress : false;
 
   return (
     <div className="space-y-3">
@@ -66,7 +77,16 @@ export function WalletControl() {
               : "Disconnected"}
         </Tag>
         <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
-          {addressLabel}
+          {formatAddress(activeAddress)}
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <Tag tone={authSession ? (sessionMatchesWallet ? "copper" : "default") : "default"}>
+          {authSession ? "Authenticated" : "Session idle"}
+        </Tag>
+        <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
+          {authSession ? formatAddress(authSession.walletAddress) : "Sign-in required"}
         </p>
       </div>
 
@@ -88,6 +108,30 @@ export function WalletControl() {
           </ActionButton>
         </div>
       )}
+
+      {authSession ? (
+        <ActionButton
+          tone="ink"
+          onClick={() => {
+            void signOut();
+          }}
+          className="w-full justify-between"
+        >
+          <span>Sign out</span>
+          <span>Session</span>
+        </ActionButton>
+      ) : connectedWallet && walletMode !== "demo" ? (
+          <ActionButton
+            onClick={() => {
+              void authenticate();
+            }}
+            disabled={isAuthenticating}
+            className="w-full justify-between"
+          >
+            <span>{isAuthenticating ? "Signing in" : "Sign In With Solana"}</span>
+            <span>Cookie auth</span>
+          </ActionButton>
+      ) : null}
 
       {feedback.message ? (
         <p

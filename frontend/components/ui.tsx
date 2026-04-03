@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AssetArtwork } from "@/components/asset-artwork";
-import type { CatalogAuctionEntry, MetricItem } from "@/lib/catalog";
+import type { ArtworkVariant, MetricItem } from "@/lib/site-data";
 import { cn } from "@/lib/utils";
 
 type Tone = "surface" | "muted" | "dark";
@@ -304,7 +304,20 @@ export function DataTable({
   );
 }
 
-export function MarketplaceCard({ lot }: { lot: CatalogAuctionEntry & { status: string; marketMetrics: MetricItem[] } }) {
+type MarketplaceCardLot = {
+  slug: string;
+  lot: string;
+  title: string;
+  description: string;
+  issuerName: string;
+  status: string;
+  marketMetrics: MetricItem[];
+  artwork?: ArtworkVariant;
+  imageBase64?: string | null;
+  detailLabel?: string;
+};
+
+export function MarketplaceCard({ lot }: { lot: MarketplaceCardLot }) {
   return (
     <Panel className="flex h-full flex-col gap-4 p-4 sm:p-5">
       <div className="flex items-center justify-between">
@@ -313,15 +326,17 @@ export function MarketplaceCard({ lot }: { lot: CatalogAuctionEntry & { status: 
       </div>
 
       <AssetArtwork
-        variant={lot.artwork}
-        label={lot.category}
+        variant={lot.artwork ?? "schema"}
+        label={lot.detailLabel ?? "Auction lot"}
+        imageSrc={lot.imageBase64}
+        imageAlt={lot.title}
         className="h-56 sm:h-60"
       />
 
       <div className="space-y-3">
         <div>
           <p className="font-mono text-[9px] uppercase tracking-[0.24em] text-muted">
-            {lot.location}
+            {lot.detailLabel ?? "Market listing"}
           </p>
           <Link
             href={`/auctions/${lot.slug}`}

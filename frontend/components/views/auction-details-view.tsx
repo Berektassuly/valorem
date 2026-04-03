@@ -1,82 +1,61 @@
-"use client";
-
 import { AssetArtwork } from "@/components/asset-artwork";
-import { AuctionActionPanel } from "@/components/protocol/auction-action-panel";
-import { useValoremApp } from "@/components/providers/valorem-app-provider";
 import {
   ActionLink,
-  DataTable,
   MetricGrid,
   PageIntro,
   Panel,
   SectionHeading,
   Tag,
 } from "@/components/ui";
-import { formatCountDown, formatPhaseLabel, formatShortUsd, formatUsd } from "@/lib/protocol/format";
-import { buildAuctionLedger } from "@/lib/protocol/view-models";
+import type { AuctionLot } from "@/lib/marketplace/types";
+import {
+  formatCalendarDate,
+  formatLotStatus,
+  formatWalletAddress,
+} from "@/lib/marketplace/view-models";
 
-export function AuctionDetailsView({ slug }: { slug: string }) {
-  const { getAuction, getWalletAuctionState } = useValoremApp();
-  const auction = getAuction(slug);
-
-  if (!auction) {
-    return null;
-  }
-
-  const walletState = getWalletAuctionState(slug);
-  const currentBid = walletState.currentBid ?? auction.auction.reservePrice;
-  const ledgerColumns = [
-    { key: "step", label: "Step" },
-    { key: "window", label: "Window" },
-    { key: "amount", label: "Amount", align: "right" as const },
-    { key: "status", label: "Status", align: "right" as const },
-  ];
-  const ledgerRows = buildAuctionLedger(auction).map((row) => ({
-    id: row.step,
-    step: (
-      <div className="space-y-1">
-        <p className="text-sm font-semibold uppercase tracking-[0.14em] text-ink">
-          {row.step}
-        </p>
-        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
-          {row.note}
-        </p>
-      </div>
-    ),
-    window: row.window,
-    amount: row.amount,
-    status: <Tag tone={row.tone}>{row.status}</Tag>,
-  }));
-
+export function AuctionDetailsView({
+  lot,
+  isProfileOwner,
+}: {
+  lot: AuctionLot;
+  isProfileOwner: boolean;
+}) {
   return (
     <div className="space-y-8">
       <PageIntro
-        eyebrow={auction.catalog.editorial.eyebrow}
-        title={auction.catalog.title}
-        description={auction.catalog.editorial.summary}
+        eyebrow={`Auction dossier / ${formatLotStatus(lot.status)}`}
+        title={lot.title}
+        description={lot.description}
         aside={
           <Panel className="w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between">
-              <Tag tone="dark">{formatPhaseLabel(auction.auction.phase)}</Tag>
+              <Tag tone={lot.status === "completed" ? "dark" : "copper"}>
+                {formatLotStatus(lot.status)}
+              </Tag>
               <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
-                Auction / {auction.catalog.lot}
+                Lot / {lot.id.slice(0, 8)}
               </p>
             </div>
             <MetricGrid
               columns={2}
               items={[
-                { label: "Current bid", value: formatShortUsd(currentBid), accent: true },
-                { label: "Reserve", value: formatShortUsd(auction.auction.reservePrice) },
-                { label: "Deposit", value: formatShortUsd(auction.auction.depositAmount) },
                 {
-                  label: auction.auction.phase === "settlement" ? "Window" : "Closes",
-                  value:
-                    auction.auction.phase === "settlement"
-                      ? formatCountDown(
-                          auction.auction.activeSettlementStartedAt +
-                            auction.auction.settlementWindow,
-                        )
-                      : formatCountDown(auction.auction.biddingEndAt),
+                  label: "Seller",
+                  value: formatWalletAddress(lot.issuerWallet),
+                },
+                {
+                  label: "Winner",
+                  value: formatWalletAddress(lot.settledBidder),
+                  accent: Boolean(lot.settledBidder),
+                },
+                {
+                  label: "Created",
+                  value: formatCalendarDate(lot.createdAt),
+                },
+                {
+                  label: "Updated",
+                  value: formatCalendarDate(lot.updatedAt),
                 },
               ]}
             />
@@ -84,119 +63,159 @@ export function AuctionDetailsView({ slug }: { slug: string }) {
         }
       />
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.18fr)_380px]">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.16fr)_380px]">
         <Panel className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
-            <Tag tone="copper">{auction.catalog.category}</Tag>
-            <Tag>{auction.catalog.location}</Tag>
-            <Tag>{auction.catalog.issuerName}</Tag>
+            <Tag tone="copper">{formatLotStatus(lot.status)}</Tag>
+            <Tag>{formatWalletAddress(lot.issuerWallet)}</Tag>
+            {lot.contractAddress ? <Tag>{formatWalletAddress(lot.contractAddress)}</Tag> : null}
           </div>
           <AssetArtwork
-            variant={auction.catalog.artwork}
-            label={auction.catalog.editorial.heroLabel}
+            variant="schema"
+            label="Stored asset"
+            imageSrc={lot.imageBase64}
+            imageAlt={lot.title}
             className="h-72 sm:h-[430px]"
           />
           <MetricGrid
             items={[
-              { label: "Current clearing bid", value: formatUsd(currentBid), accent: true },
-              { label: "Reserve", value: formatUsd(auction.auction.reservePrice) },
-              { label: "Asset units", value: auction.auction.assetAmount.toString() },
-              { label: "Participant cap", value: String(auction.auction.maxBidders) },
-            ]}
-          />
-        </Panel>
-
-        <div className="space-y-6">
-          <AuctionActionPanel slug={slug} />
-
-          <Panel tone="dark" className="space-y-4">
-            <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/70">
-              Settlement threshold
-            </p>
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <p className="max-w-xs text-sm leading-6 text-white/80">
-                  Ownership remains blocked until compliance approval is recorded
-                  and the active settlement candidate completes payment.
-                </p>
-              </div>
-              <p className="text-4xl font-semibold uppercase tracking-[-0.05em] text-copper-soft">
-                {formatShortUsd(auction.auction.reservePrice)}
-              </p>
-            </div>
-          </Panel>
-
-          <Panel className="space-y-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
-              Issuer note
-            </p>
-            <p className="text-sm leading-6 text-ink">
-              {auction.catalog.editorial.issuerNote}
-            </p>
-          </Panel>
-        </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,0.94fr)_minmax(0,1.06fr)]">
-        <Panel className="space-y-5">
-          <SectionHeading
-            eyebrow="Settlement state"
-            title={auction.catalog.editorial.secondaryTitle}
-            description={auction.catalog.editorial.secondarySummary}
-          />
-          <AssetArtwork
-            variant={auction.catalog.editorial.secondaryArtwork}
-            label="Secondary certificate"
-            className="h-64 sm:h-[300px]"
-          />
-          <MetricGrid
-            columns={2}
-            items={[
-              { label: "Deposits held", value: formatUsd(auction.auction.totalDepositsHeld) },
-              { label: "Slashed", value: formatUsd(auction.auction.totalSlashed), accent: true },
-              { label: "Proceeds", value: formatUsd(auction.auction.totalProceeds) },
               {
-                label: "Candidate",
-                value: walletState.isLeadingCandidate ? "This wallet" : "Issuer controlled",
+                label: "Contract",
+                value: formatWalletAddress(lot.contractAddress),
+                accent: Boolean(lot.contractAddress),
+              },
+              {
+                label: "Seller wallet",
+                value: formatWalletAddress(lot.issuerWallet),
+              },
+              {
+                label: "Settled bidder",
+                value: formatWalletAddress(lot.settledBidder),
+              },
+              {
+                label: "Profile visibility",
+                value: lot.status === "completed" ? "Private" : "Public",
+                accent: lot.status === "completed",
               },
             ]}
           />
-          <div className="flex flex-wrap gap-3">
-            <ActionLink href="/dashboard" tone="ink">
-              Wallet Dashboard
-            </ActionLink>
-            <ActionLink href="/marketplace" tone="ghost">
-              Return To Desk
-            </ActionLink>
-          </div>
         </Panel>
 
         <div className="space-y-6">
-          <Panel className="space-y-5">
-            <SectionHeading
-              eyebrow="Due diligence"
-              title="Room notes"
-              description="Compliance, underwriting, and payment rails are kept readable and controlled rather than turned into widget-heavy product chrome."
-            />
+          <Panel tone="dark" className="space-y-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/70">
+              Ownership state
+            </p>
+            <p className="text-sm leading-6 text-white/80">
+              Public lots remain visible until the cached protocol status moves
+              to completed. At that moment, the record is removed from the
+              storefront and is only rendered in the winner’s private profile.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <ActionLink href="/marketplace" tone="ghost">
+                Back To Marketplace
+              </ActionLink>
+              {isProfileOwner ? (
+                <ActionLink href="/profile" tone="copper">
+                  View My Asset
+                </ActionLink>
+              ) : null}
+            </div>
+          </Panel>
+
+          <Panel className="space-y-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
+              Audit trail
+            </p>
             <div className="space-y-3">
-              {auction.catalog.editorial.diligence.map((item) => (
+              {[
+                `Database record created at ${formatCalendarDate(lot.createdAt)}.`,
+                lot.contractAddress
+                  ? `Linked to on-chain auction ${lot.contractAddress}.`
+                  : "Awaiting on-chain initialization.",
+                lot.settledBidder
+                  ? `Ownership cached for wallet ${lot.settledBidder}.`
+                  : "No settled bidder cached yet.",
+              ].map((item) => (
                 <div key={item} className="border border-line bg-surface p-4">
                   <p className="text-sm leading-6 text-ink">{item}</p>
                 </div>
               ))}
             </div>
           </Panel>
-
-          <Panel className="space-y-5">
-            <SectionHeading
-              eyebrow="Settlement ledger"
-              title="Post-auction flow"
-              description="The ledger remains severe and compact, but it now reflects actual auction phase, ranking, and proceeds state."
-            />
-            <DataTable columns={ledgerColumns} rows={ledgerRows} />
-          </Panel>
         </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,0.98fr)_minmax(0,1.02fr)]">
+        <Panel className="space-y-5">
+          <SectionHeading
+            eyebrow="Stored media"
+            title="Base64-backed lot record"
+            description="This MVP keeps images and narrative metadata inside PostgreSQL so the full lot can be recovered directly from the relational record without external object storage."
+          />
+          <div className="space-y-3">
+            {[
+              {
+                label: "Title",
+                value: lot.title,
+              },
+              {
+                label: "Description",
+                value: lot.description,
+              },
+              {
+                label: "Contract address",
+                value: lot.contractAddress ?? "Pending link",
+              },
+              {
+                label: "Winner proof",
+                value: lot.settledBidder ?? "Pending settlement",
+              },
+            ].map((item) => (
+              <div key={item.label} className="border border-line bg-surface p-4">
+                <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted">
+                  {item.label}
+                </p>
+                <p className="mt-2 break-words text-sm leading-6 text-ink">
+                  {item.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel className="space-y-5">
+          <SectionHeading
+            eyebrow="Visibility rules"
+            title="How this lot is filtered"
+            description="The routing and query behavior now follow the product rules described for the dynamic MVP."
+          />
+          <div className="space-y-3">
+            {[
+              {
+                title: "Marketplace",
+                copy: "Shown only while the cached status is not completed.",
+              },
+              {
+                title: "Profile",
+                copy: "Shown only when status is completed and the settled bidder matches the authenticated wallet.",
+              },
+              {
+                title: "Direct access",
+                copy: "Completed lots are hidden from non-owners even if they know the URL.",
+              },
+            ].map((item) => (
+              <div key={item.title} className="border border-line bg-surface p-4">
+                <p className="text-sm font-semibold uppercase tracking-[0.12em] text-ink">
+                  {item.title}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-muted">{item.copy}</p>
+              </div>
+            ))}
+          </div>
+        </Panel>
       </section>
     </div>
   );
 }
+

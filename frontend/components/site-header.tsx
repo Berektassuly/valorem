@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils";
 
 const navigationItems = [
   { href: "/marketplace", label: "Marketplace" },
-  { href: "/auctions/metropolitan-core-office-complex", label: "Auction Details" },
-  { href: "/issuer", label: "Issuer Terminal" },
-  { href: "/dashboard", label: "User Dashboard" },
+  { href: "/issuer", label: "Create Lot" },
+  { href: "/profile", label: "Profile" },
+  { href: "/dashboard", label: "Legacy Desk" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -23,7 +23,7 @@ function isActive(pathname: string, href: string) {
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const { cluster, protocolMode } = useValoremApp();
+  const { authSession, cluster, protocolMode } = useValoremApp();
 
   return (
     <header className="sticky top-0 z-40 border-b border-line/80 bg-paper/85 backdrop-blur-xl">
@@ -54,10 +54,10 @@ export function SiteHeader() {
               {`Env / ${protocolMode} / ${cluster}`}
             </div>
             <Link
-              href="/issuer"
+              href={authSession ? "/issuer" : "/profile"}
               className="inline-flex items-center justify-center border border-copper bg-copper px-4 py-2 text-[10px] font-medium uppercase tracking-[0.3em] text-white transition-colors hover:bg-copper-soft"
             >
-              Issuer Desk
+              {authSession ? "Seller Studio" : "View Profile"}
             </Link>
           </div>
         </div>

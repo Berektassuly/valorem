@@ -21,10 +21,14 @@ const backgrounds: Record<ArtworkVariant, string> = {
 export function AssetArtwork({
   variant,
   label,
+  imageSrc,
+  imageAlt,
   className,
 }: {
   variant: ArtworkVariant;
   label?: string;
+  imageSrc?: string | null;
+  imageAlt?: string;
   className?: string;
 }) {
   return (
@@ -35,10 +39,17 @@ export function AssetArtwork({
         className,
       )}
     >
+      {imageSrc ? (
+        <img
+          src={imageSrc}
+          alt={imageAlt ?? label ?? "Auction lot image"}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : null}
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),transparent_24%,transparent_72%,rgba(255,255,255,0.04))]" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,white_1px,transparent_1px)] bg-[length:18px_18px] opacity-20" />
 
-      {variant === "portrait" ? (
+      {!imageSrc && variant === "portrait" ? (
         <>
           <div className="absolute left-1/2 top-[18%] h-[42%] w-[28%] -translate-x-1/2 rounded-full bg-white/16 blur-[2px]" />
           <div className="absolute left-1/2 top-[48%] h-[44%] w-[44%] -translate-x-1/2 rounded-t-[48%] rounded-b-[18%] bg-white/11" />
@@ -47,7 +58,7 @@ export function AssetArtwork({
         </>
       ) : null}
 
-      {variant === "orbital" ? (
+      {!imageSrc && variant === "orbital" ? (
         <>
           <div className="absolute left-1/2 top-1/2 h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/18" />
           <div className="absolute left-1/2 top-1/2 h-[42%] w-[42%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20" />
@@ -55,7 +66,7 @@ export function AssetArtwork({
         </>
       ) : null}
 
-      {variant === "tower" ? (
+      {!imageSrc && variant === "tower" ? (
         <>
           <div className="absolute left-[12%] bottom-0 h-[72%] w-[18%] border-x border-white/12 bg-white/6" />
           <div className="absolute left-[28%] bottom-0 h-[88%] w-[30%] border-x border-white/12 bg-white/8" />
@@ -64,7 +75,7 @@ export function AssetArtwork({
         </>
       ) : null}
 
-      {variant === "textile" ? (
+      {!imageSrc && variant === "textile" ? (
         <>
           <div className="absolute left-1/2 top-[16%] h-[28%] w-[16%] -translate-x-1/2 rounded-full border border-white/14 bg-white/6" />
           <div className="absolute left-1/2 top-[28%] h-[66%] w-[46%] -translate-x-1/2 rounded-t-[24%] bg-white/11" />
@@ -73,7 +84,7 @@ export function AssetArtwork({
         </>
       ) : null}
 
-      {variant === "schema" ? (
+      {!imageSrc && variant === "schema" ? (
         <>
           <div className="absolute left-[12%] top-[14%] h-[64%] w-[68%] rotate-6 border border-white/18 bg-white/7" />
           <div className="absolute right-[14%] bottom-[18%] h-[18%] w-[18%] rotate-6 border border-white/18 bg-black/35" />
@@ -81,7 +92,7 @@ export function AssetArtwork({
         </>
       ) : null}
 
-      {variant === "statue" ? (
+      {!imageSrc && variant === "statue" ? (
         <>
           <div className="absolute left-1/2 top-[24%] h-[18%] w-[16%] -translate-x-1/2 rounded-full bg-white/16" />
           <div className="absolute left-1/2 top-[40%] h-[30%] w-[20%] -translate-x-1/2 rounded-[36%] bg-white/12" />
@@ -89,7 +100,7 @@ export function AssetArtwork({
         </>
       ) : null}
 
-      {variant === "bear" ? (
+      {!imageSrc && variant === "bear" ? (
         <>
           <div className="absolute left-1/2 top-[18%] h-[54%] w-[44%] -translate-x-1/2 rounded-[36%] bg-white/12" />
           <div className="absolute left-[30%] top-[22%] h-[18%] w-[16%] rounded-full bg-white/12" />

@@ -1,20 +1,42 @@
 import { notFound } from "next/navigation";
 import { AuctionDetailsView } from "@/components/views/auction-details-view";
-import { catalogAuctions, getCatalogAuction } from "@/lib/catalog";
-
-export function generateStaticParams() {
-  return catalogAuctions.map((lot) => ({ slug: lot.slug }));
-}
+import { getAuthSession } from "@/lib/marketplace/auth";
+import { getAuctionBySlug } from "@/lib/marketplace/auction-store";
 
 export default async function AuctionDetailPage({
   params,
-}: PageProps<"/auctions/[slug]">) {
+}: {
+  params: Promise<{ slug: string }>;
+}) {
   const { slug } = await params;
-  const detail = getCatalogAuction(slug);
+  const session = await getAuthSession();
+  let lot = null;
 
-  if (!detail) {
+  try {
+    lot = await getAuctionBySlug(slug);
+  } catch {
     notFound();
   }
 
-  return <AuctionDetailsView slug={slug} />;
+  if (!lot) {
+    notFound();
+  }
+
+  const isCompletedForAnotherWallet =
+    lot.status === "completed" &&
+    lot.settledBidder !== session?.walletAddress;
+  const isDraftForAnotherWallet =
+    lot.status === "draft" &&
+    lot.issuerWallet !== session?.walletAddress;
+
+  if (isCompletedForAnotherWallet || isDraftForAnotherWallet) {
+    notFound();
+  }
+
+  return (
+    <AuctionDetailsView
+      lot={lot}
+      isProfileOwner={lot.settledBidder === session?.walletAddress}
+    />
+  );
 }

@@ -18,8 +18,10 @@ import {
 } from "@wallet-standard/react";
 import {
   SolanaSignAndSendTransaction,
+  SolanaSignMessage,
   SolanaSignTransaction,
   type SolanaSignAndSendTransactionFeature,
+  type SolanaSignMessageFeature,
   type SolanaSignTransactionFeature,
 } from "@solana/wallet-standard-features";
 import {
@@ -36,6 +38,7 @@ import {
   buildBidCommitment,
   buildClaimRefundInstruction,
   buildCloseRevealInstruction,
+  buildInitializeAuctionInstruction,
   buildRecordComplianceInstruction,
   buildRevealBidInstruction,
   buildSettleCandidateInstruction,
@@ -44,10 +47,12 @@ import {
   buildSubmitCommitmentInstruction,
   buildWithdrawProceedsInstruction,
   createRevealSecret,
+  deriveAuctionPda,
   deriveBidderStatePda,
   deriveComplianceRecordPda,
 } from "@valorem/sdk";
 import { catalogAuctions } from "@/lib/catalog";
+import type { AuthSession } from "@/lib/marketplace/types";
 import {
   auctionProgramId,
   protocolChain,
@@ -83,6 +88,8 @@ type ValoremAppContextValue = {
   cluster: string;
   rpcUrl: string;
   walletMode: WalletMode;
+  authSession: AuthSession | null;
+  isAuthenticating: boolean;
   activeAddress: string | null;
   wallets: readonly UiWallet[];
   connectedWallet: UiWallet | null;
@@ -91,8 +98,23 @@ type ValoremAppContextValue = {
   refresh: () => Promise<void>;
   enableDemoWallet: () => void;
   disableDemoWallet: () => void;
+  authenticate: () => Promise<void>;
+  signOut: () => Promise<void>;
   getAuction: (slug: string) => AuctionRuntimeState | null;
   getWalletAuctionState: (slug: string) => WalletAuctionState;
+  initializeAuction: (params: {
+    reviewerAddress: string;
+    assetMintAddress: string;
+    paymentMintAddress: string;
+    auctionSeed: Uint8Array;
+    depositAmount: bigint;
+    reservePrice: bigint;
+    assetAmount: bigint;
+    biddingWindowSeconds: number;
+    revealWindowSeconds: number;
+    settlementWindowSeconds: number;
+    maxBidders: number;
+  }) => Promise<{ signature: string; contractAddress: string }>;
   submitCommitment: (slug: string, bidAmount: bigint) => Promise<void>;
   revealBid: (slug: string) => Promise<void>;
   settleCandidate: (slug: string) => Promise<void>;
@@ -217,11 +239,59 @@ async function sendWalletTransaction(params: {
   throw new Error("Connected wallet does not expose a compatible Solana signing feature.");
 }
 
-export function ValoremAppProvider({ children }: { children: ReactNode }) {
+function getWalletAccount(wallet: UiWallet, accountAddress: string) {
+  const account = wallet.accounts.find(
+    (walletAccount) => walletAccount.address === accountAddress,
+  );
+  if (!account) {
+    throw new Error("Connected wallet account is unavailable.");
+  }
+
+  return account;
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return window.btoa(binary);
+}
+
+async function signWalletMessage(params: {
+  wallet: UiWallet;
+  accountAddress: string;
+  message: Uint8Array;
+}) {
+  if (!params.wallet.features.includes(SolanaSignMessage)) {
+    throw new Error("Connected wallet does not support message signing.");
+  }
+
+  const feature = getWalletFeature(
+    params.wallet,
+    SolanaSignMessage,
+  ) as SolanaSignMessageFeature[typeof SolanaSignMessage];
+  const [result] = await feature.signMessage({
+    account: getWalletAccount(params.wallet, params.accountAddress),
+    message: params.message,
+  });
+
+  return result;
+}
+
+export function ValoremAppProvider({
+  children,
+  initialSession = null,
+}: {
+  children: ReactNode;
+  initialSession?: AuthSession | null;
+}) {
   const wallets = useWallets();
   const connectedWallet = useMemo(() => getPrimaryConnectedWallet(wallets), [wallets]);
   const connectedAddress = connectedWallet?.accounts[0]?.address ?? null;
   const [demoWalletEnabled, setDemoWalletEnabled] = useState(false);
+  const [authSession, setAuthSession] = useState<AuthSession | null>(initialSession);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [mockState, setMockState] = useState<Record<string, AuctionRuntimeState>>(
     createInitialMockProtocolState,
   );
@@ -353,6 +423,177 @@ export function ValoremAppProvider({ children }: { children: ReactNode }) {
         connection,
         instructions,
       });
+    },
+    [activeAddress, connectedWallet, connection, walletMode],
+  );
+
+  const authenticate = useCallback(async () => {
+    if (walletMode === "demo") {
+      setFeedback({
+        status: "error",
+        message: "Demo mode cannot complete Sign-In With Solana.",
+      });
+      return;
+    }
+
+    if (!connectedWallet || !connectedAddress) {
+      setFeedback({
+        status: "error",
+        message: "Connect a wallet before attempting Sign-In With Solana.",
+      });
+      return;
+    }
+
+    setIsAuthenticating(true);
+
+    try {
+      const nonceResponse = await fetch("/api/auth/nonce", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress: connectedAddress }),
+      });
+      const noncePayload = (await nonceResponse.json()) as {
+        challengeId?: string;
+        message?: string;
+        error?: string;
+      };
+
+      if (!nonceResponse.ok || !noncePayload.challengeId || !noncePayload.message) {
+        throw new Error(noncePayload.error ?? "Unable to start wallet authentication.");
+      }
+
+      const signed = await signWalletMessage({
+        wallet: connectedWallet,
+        accountAddress: connectedAddress,
+        message: new TextEncoder().encode(noncePayload.message),
+      });
+
+      const verifyResponse = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challengeId: noncePayload.challengeId,
+          walletAddress: connectedAddress,
+          signedMessageBase64: bytesToBase64(signed.signedMessage),
+          signatureBase64: bytesToBase64(signed.signature),
+        }),
+      });
+      const verifyPayload = (await verifyResponse.json()) as {
+        session?: AuthSession;
+        error?: string;
+      };
+
+      if (!verifyResponse.ok || !verifyPayload.session) {
+        throw new Error(verifyPayload.error ?? "Wallet authentication failed.");
+      }
+
+      setAuthSession(verifyPayload.session);
+      setFeedback({
+        status: "success",
+        message: `Authenticated as ${connectedAddress.slice(0, 4)}...${connectedAddress.slice(-4)}.`,
+      });
+    } catch (error) {
+      setFeedback({
+        status: "error",
+        message:
+          error instanceof Error ? error.message : "Wallet authentication failed.",
+      });
+    } finally {
+      setIsAuthenticating(false);
+    }
+  }, [connectedAddress, connectedWallet, walletMode]);
+
+  const signOut = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setAuthSession(null);
+    setFeedback({
+      status: "success",
+      message: "Signed out of the marketplace session.",
+    });
+  }, []);
+
+  const initializeAuction = useCallback(
+    async (params: {
+      reviewerAddress: string;
+      assetMintAddress: string;
+      paymentMintAddress: string;
+      auctionSeed: Uint8Array;
+      depositAmount: bigint;
+      reservePrice: bigint;
+      assetAmount: bigint;
+      biddingWindowSeconds: number;
+      revealWindowSeconds: number;
+      settlementWindowSeconds: number;
+      maxBidders: number;
+    }) => {
+      if (walletMode === "demo") {
+        throw new Error("Connect a real wallet to initialize an on-chain auction.");
+      }
+
+      if (!connectedWallet || !activeAddress) {
+        throw new Error("Connect a wallet before creating an auction.");
+      }
+
+      const issuer = new PublicKey(activeAddress);
+      const paymentMint = new PublicKey(params.paymentMintAddress);
+      const issuerPaymentDestination = getAssociatedTokenAddressSync(
+        paymentMint,
+        issuer,
+        false,
+        TOKEN_2022_PROGRAM_ID,
+      );
+      const [auction] = deriveAuctionPda(issuer, params.auctionSeed);
+      const now = Math.floor(Date.now() / 1000);
+      const biddingEndAt = now + params.biddingWindowSeconds;
+      const revealEndAt = biddingEndAt + params.revealWindowSeconds;
+
+      try {
+        const signature = await sendWalletTransaction({
+          wallet: connectedWallet,
+          accountAddress: activeAddress,
+          connection,
+          instructions: [
+            buildInitializeAuctionInstruction({
+              issuer,
+              reviewer: new PublicKey(params.reviewerAddress),
+              assetMint: new PublicKey(params.assetMintAddress),
+              paymentMint,
+              issuerPaymentDestination,
+              args: {
+                auctionSeed: params.auctionSeed,
+                depositAmount: params.depositAmount,
+                reservePrice: params.reservePrice,
+                assetAmount: params.assetAmount,
+                biddingEndAt: BigInt(biddingEndAt),
+                revealEndAt: BigInt(revealEndAt),
+                settlementWindow: BigInt(params.settlementWindowSeconds),
+                maxBidders: params.maxBidders,
+              },
+            }),
+          ],
+        });
+
+        setFeedback({
+          status: "success",
+          message: "Auction initialized on Solana.",
+          signature,
+        });
+
+        return {
+          signature,
+          contractAddress: auction.toBase58(),
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to initialize the on-chain auction.";
+        setFeedback({
+          status: "error",
+          message,
+        });
+        throw new Error(message);
+      }
     },
     [activeAddress, connectedWallet, connection, walletMode],
   );
@@ -738,6 +979,8 @@ export function ValoremAppProvider({ children }: { children: ReactNode }) {
       cluster: protocolCluster,
       rpcUrl: protocolRpcUrl,
       walletMode,
+      authSession,
+      isAuthenticating,
       activeAddress,
       wallets,
       connectedWallet,
@@ -746,8 +989,11 @@ export function ValoremAppProvider({ children }: { children: ReactNode }) {
       refresh,
       enableDemoWallet: () => setDemoWalletEnabled(true),
       disableDemoWallet: () => setDemoWalletEnabled(false),
+      authenticate,
+      signOut,
       getAuction,
       getWalletAuctionState: getWalletStateForSlug,
+      initializeAuction,
       submitCommitment,
       revealBid,
       settleCandidate,
@@ -762,6 +1008,8 @@ export function ValoremAppProvider({ children }: { children: ReactNode }) {
     [
       activeAddress,
       advanceToReveal,
+      authenticate,
+      authSession,
       auctions,
       claimRefund,
       closeReveal,
@@ -769,10 +1017,13 @@ export function ValoremAppProvider({ children }: { children: ReactNode }) {
       feedback,
       getAuction,
       getWalletStateForSlug,
+      initializeAuction,
+      isAuthenticating,
       recordCompliance,
       refresh,
       revealBid,
       settleCandidate,
+      signOut,
       slashCandidate,
       slashUnrevealed,
       submitCommitment,
