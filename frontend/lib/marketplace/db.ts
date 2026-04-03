@@ -63,12 +63,6 @@ export async function ensureMarketplaceSchema() {
     `;
 
     await sql`
-      create unique index if not exists auctions_contract_address_key
-      on auctions (contract_address)
-      where contract_address is not null
-    `;
-
-    await sql`
       create index if not exists auctions_marketplace_idx
       on auctions (status, created_at desc)
       where contract_address is not null and status <> 'completed'
@@ -88,4 +82,3 @@ export async function ensureMarketplaceSchema() {
 
   return globalThis.__valoremSchemaPromise__;
 }
-

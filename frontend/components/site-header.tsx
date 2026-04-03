@@ -75,7 +75,7 @@ export function SiteHeader() {
                   className={cn(
                     "inline-flex items-center border px-3 py-2 text-[10px] uppercase tracking-[0.3em] transition-colors",
                     active
-                      ? "border-ink bg-ink text-white"
+                      ? "border-copper bg-copper/10 text-ink"
                       : "border-line bg-surface/75 text-muted hover:border-copper hover:text-ink",
                   )}
                 >
