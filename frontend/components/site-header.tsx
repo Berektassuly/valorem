@@ -49,7 +49,7 @@ export function SiteHeader() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 sm:justify-end">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <div className="rounded-full border border-line bg-surface px-3 py-2 font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
               {`Env / ${protocolMode} / ${cluster}`}
             </div>
@@ -59,12 +59,12 @@ export function SiteHeader() {
             >
               {authSession ? "Seller Studio" : "View Profile"}
             </Link>
+            <WalletControl />
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
-          <nav className="overflow-x-auto">
-            <div className="flex min-w-max items-center gap-2">
+        <nav className="overflow-x-auto">
+          <div className="flex min-w-max items-center gap-2">
             {navigationItems.map((item) => {
               const active = isActive(pathname, item.href);
 
@@ -83,12 +83,8 @@ export function SiteHeader() {
                 </Link>
               );
             })}
-            </div>
-          </nav>
-          <div className="xl:justify-self-end">
-            <WalletControl />
           </div>
-        </div>
+        </nav>
       </div>
     </header>
   );
