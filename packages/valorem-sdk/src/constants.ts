@@ -1,11 +1,11 @@
 import { PublicKey } from "@solana/web3.js";
 
 export const VALOREM_AUCTION_PROGRAM_ID = new PublicKey(
-  "CL8VHpgrWj3XSLFrSSnDdGTYadh3wgtcixaLvh39CWfe",
+  "FG6nnyfyztJyn1Yzov6xHqfjRMJGTpHd6T5LwPJuruPS",
 );
 
 export const VALOREM_TRANSFER_HOOK_PROGRAM_ID = new PublicKey(
-  "8ps8kraPz7i9XHLkUuvVQdfmEuR6MgT6MBw26Ye6EVSd",
+  "JCdjqNU5JEfuupjT6EAuBphhALhyiBRJy9E3fstwR1Yd",
 );
 
 export const AUCTION_SEED = "auction";

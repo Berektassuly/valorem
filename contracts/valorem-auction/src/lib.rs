@@ -7,7 +7,7 @@ use anchor_lang::prelude::*;
 use contexts::*;
 use state::{ComplianceStatus, InitializeAuctionArgs, SlashReason};
 
-declare_id!("CL8VHpgrWj3XSLFrSSnDdGTYadh3wgtcixaLvh39CWfe");
+declare_id!("FG6nnyfyztJyn1Yzov6xHqfjRMJGTpHd6T5LwPJuruPS");
 
 #[program]
 pub mod valorem_auction {

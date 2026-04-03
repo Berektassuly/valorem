@@ -16,7 +16,7 @@ use spl_transfer_hook_interface::{
     solana_pubkey::Pubkey as InterfacePubkey,
 };
 
-declare_id!("8ps8kraPz7i9XHLkUuvVQdfmEuR6MgT6MBw26Ye6EVSd");
+declare_id!("JCdjqNU5JEfuupjT6EAuBphhALhyiBRJy9E3fstwR1Yd");
 
 const CONFIG_SEED: &[u8] = b"config";
 const PERMIT_SEED: &[u8] = b"permit";
