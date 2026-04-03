@@ -219,7 +219,7 @@ function buildDefaultAuctionDetail(lot: AuctionLot): AuctionDetail {
     ],
     diligence: [
       "Offering materials reviewed and normalized into a restrained presentation state.",
-      "Issuer disclosures, cap table references, and settlement notes are displayed as mock copy only.",
+      "Issuer disclosures, cap table references, and settlement notes are displayed as sample desk copy only.",
       "Layout spacing intentionally prioritizes readability and negative space over feature density.",
     ],
     ledger: [
@@ -299,7 +299,7 @@ const customAuctionDetails: Record<string, AuctionDetail> = {
     ],
     diligence: [
       "Property engineering report and tenancy roll are represented as verified static states for design review.",
-      "Settlement amount and payment timing are mock values chosen to mirror the numeric emphasis visible in the Figma flow.",
+      "Settlement amount and payment timing are sample values chosen to mirror the numeric emphasis visible in the Figma flow.",
       "Supporting blocks remain intentionally sparse to preserve the editorial white space of the original composition.",
     ],
     ledger: [
@@ -351,7 +351,7 @@ export const marketPulse = [
   {
     title: "Issuer quality",
     badge: "Verified",
-    copy: "All visible issuers in this mock environment pass the same trust-oriented visual treatment: sharp borders, narrow labels, and modest color usage.",
+    copy: "All visible issuers in this environment pass the same trust-oriented visual treatment: sharp borders, narrow labels, and modest color usage.",
     tone: "dark" as const,
   },
   {

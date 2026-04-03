@@ -182,7 +182,7 @@ export function AuctionActionPanel({ slug }: { slug: string }) {
           </p>
           <p className="mt-3 text-sm leading-6 text-muted">
             {walletState.actions.includes("connect")
-              ? "Connect a wallet or enable the demo wallet to participate."
+              ? "Connect a wallet to participate in this devnet auction."
               : walletState.actions.includes("awaitReveal")
                 ? "Commitment recorded. Wait for reveal phase before submitting bid details."
                 : walletState.actions.includes("awaitCompliance")

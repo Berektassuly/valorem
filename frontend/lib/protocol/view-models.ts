@@ -1,6 +1,6 @@
 import type { MetricItem } from "@/lib/catalog";
 import { formatCountDown, formatPhaseLabel, formatRank, formatShortUsd, formatUsd } from "./format";
-import { getCurrentBid, getWalletAuctionState } from "./mock-transitions";
+import { getCurrentBid, getWalletAuctionState } from "./runtime-state";
 import type { AuctionRuntimeState } from "./types";
 
 export function buildMarketplaceLots(auctions: AuctionRuntimeState[], activeAddress: string | null) {

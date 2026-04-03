@@ -5,8 +5,8 @@ import type {
 } from "@valorem/sdk";
 import type { CatalogAuctionEntry } from "@/lib/catalog";
 
-export type ProtocolMode = "mock" | "rpc";
-export type WalletMode = "disconnected" | "demo" | "wallet-standard";
+export type ProtocolMode = "rpc";
+export type WalletMode = "disconnected" | "wallet-standard";
 
 export type AuctionRuntimeState = {
   catalog: CatalogAuctionEntry;

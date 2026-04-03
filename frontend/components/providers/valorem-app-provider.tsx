@@ -33,11 +33,16 @@ import {
 } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import {
+  BIDDER_STATE_ACCOUNT_NAME,
+  COMPLIANCE_RECORD_ACCOUNT_NAME,
   ValoremProtocolClient,
+  anchorAccountDiscriminator,
   buildAdvanceToRevealInstruction,
   buildBidCommitment,
   buildClaimRefundInstruction,
   buildCloseRevealInstruction,
+  decodeBidderStateAccount,
+  decodeComplianceRecordAccount,
   buildInitializeAuctionInstruction,
   buildRecordComplianceInstruction,
   buildRevealBidInstruction,
@@ -50,6 +55,8 @@ import {
   deriveAuctionPda,
   deriveBidderStatePda,
   deriveComplianceRecordPda,
+  type BidderStateAccount,
+  type ComplianceRecordAccount,
 } from "@valorem/sdk";
 import { catalogAuctions } from "@/lib/catalog";
 import type { AuthSession } from "@/lib/marketplace/types";
@@ -60,20 +67,7 @@ import {
   protocolMode,
   protocolRpcUrl,
 } from "@/lib/protocol/config";
-import { DEMO_WALLET_ADDRESS, createInitialMockProtocolState } from "@/lib/protocol/mock-state";
-import {
-  advanceMockAuctionToReveal,
-  claimMockRefund,
-  closeMockReveal,
-  getWalletAuctionState,
-  recordMockCompliance,
-  revealMockBid,
-  settleMockCandidate,
-  slashMockCandidateAndAdvance,
-  slashMockUnrevealed,
-  submitMockCommitment,
-  withdrawMockProceeds,
-} from "@/lib/protocol/mock-transitions";
+import { getWalletAuctionState } from "@/lib/protocol/runtime-state";
 import { loadRevealSecret, saveRevealSecret } from "@/lib/protocol/secrets";
 import type {
   AuctionRuntimeState,
@@ -96,8 +90,6 @@ type ValoremAppContextValue = {
   auctions: AuctionRuntimeState[];
   feedback: TransactionFeedback;
   refresh: () => Promise<void>;
-  enableDemoWallet: () => void;
-  disableDemoWallet: () => void;
   authenticate: () => Promise<void>;
   signOut: () => Promise<void>;
   getAuction: (slug: string) => AuctionRuntimeState | null;
@@ -250,6 +242,70 @@ function getWalletAccount(wallet: UiWallet, accountAddress: string) {
   return account;
 }
 
+async function fetchBidderStatesForAuction(params: {
+  connection: Connection;
+  programId: PublicKey;
+  auctionAddress: PublicKey;
+}) {
+  const accounts = await params.connection.getProgramAccounts(params.programId, {
+    commitment: "confirmed",
+    filters: [
+      {
+        memcmp: {
+          offset: 0,
+          bytes: bs58.encode(anchorAccountDiscriminator(BIDDER_STATE_ACCOUNT_NAME)),
+        },
+      },
+      {
+        memcmp: {
+          offset: 8,
+          bytes: params.auctionAddress.toBase58(),
+        },
+      },
+    ],
+  });
+
+  const bidderStates: Record<string, BidderStateAccount> = {};
+  for (const { account } of accounts) {
+    const bidderState = decodeBidderStateAccount(account.data);
+    bidderStates[bidderState.bidder.toBase58()] = bidderState;
+  }
+
+  return bidderStates;
+}
+
+async function fetchComplianceRecordsForAuction(params: {
+  connection: Connection;
+  programId: PublicKey;
+  auctionAddress: PublicKey;
+}) {
+  const accounts = await params.connection.getProgramAccounts(params.programId, {
+    commitment: "confirmed",
+    filters: [
+      {
+        memcmp: {
+          offset: 0,
+          bytes: bs58.encode(anchorAccountDiscriminator(COMPLIANCE_RECORD_ACCOUNT_NAME)),
+        },
+      },
+      {
+        memcmp: {
+          offset: 8,
+          bytes: params.auctionAddress.toBase58(),
+        },
+      },
+    ],
+  });
+
+  const complianceRecords: Record<string, ComplianceRecordAccount> = {};
+  for (const { account } of accounts) {
+    const complianceRecord = decodeComplianceRecordAccount(account.data);
+    complianceRecords[complianceRecord.bidder.toBase58()] = complianceRecord;
+  }
+
+  return complianceRecords;
+}
+
 function bytesToBase64(bytes: Uint8Array) {
   let binary = "";
   for (const byte of bytes) {
@@ -289,73 +345,89 @@ export function ValoremAppProvider({
   const wallets = useWallets();
   const connectedWallet = useMemo(() => getPrimaryConnectedWallet(wallets), [wallets]);
   const connectedAddress = connectedWallet?.accounts[0]?.address ?? null;
-  const [demoWalletEnabled, setDemoWalletEnabled] = useState(false);
   const [authSession, setAuthSession] = useState<AuthSession | null>(initialSession);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [mockState, setMockState] = useState<Record<string, AuctionRuntimeState>>(
-    createInitialMockProtocolState,
-  );
   const [rpcState, setRpcState] = useState<Record<string, AuctionRuntimeState>>({});
   const [feedback, setFeedback] = useState<TransactionFeedback>({ status: "idle" });
 
-  const walletMode: WalletMode = demoWalletEnabled
-    ? "demo"
-    : connectedAddress
-      ? "wallet-standard"
-      : "disconnected";
-  const activeAddress = walletMode === "demo" ? DEMO_WALLET_ADDRESS : connectedAddress;
+  const walletMode: WalletMode = connectedAddress ? "wallet-standard" : "disconnected";
+  const activeAddress = connectedAddress;
   const connection = useMemo(() => new Connection(protocolRpcUrl, "confirmed"), []);
+  const auctionProgramPublicKey = useMemo(() => new PublicKey(auctionProgramId), []);
   const protocolClient = useMemo(() => new ValoremProtocolClient(connection, "confirmed"), [connection]);
 
   const refresh = useCallback(async () => {
-    if (protocolMode !== "rpc") {
-      return;
-    }
+    const entries = await Promise.all(
+      catalogAuctions.map(async (catalog) => {
+        const auctionAddress = new PublicKey(catalog.protocol.auctionAddress);
 
-    const nextRpcState: Record<string, AuctionRuntimeState> = {};
-    for (const catalog of catalogAuctions) {
-      const fallback = mockState[catalog.slug];
-      try {
-        const snapshot = await protocolClient.fetchAuctionSnapshot(
-          new PublicKey(catalog.protocol.auctionAddress),
-          activeAddress ? new PublicKey(activeAddress) : undefined,
-        );
-        if (!snapshot) {
-          nextRpcState[catalog.slug] = fallback;
-          continue;
+        try {
+          const [snapshot, bidderStates, complianceRecords] = await Promise.all([
+            protocolClient.fetchAuctionSnapshot(
+              auctionAddress,
+              activeAddress ? new PublicKey(activeAddress) : undefined,
+            ),
+            fetchBidderStatesForAuction({
+              connection,
+              programId: auctionProgramPublicKey,
+              auctionAddress,
+            }),
+            fetchComplianceRecordsForAuction({
+              connection,
+              programId: auctionProgramPublicKey,
+              auctionAddress,
+            }),
+          ]);
+
+          if (!snapshot) {
+            return null;
+          }
+
+          if (snapshot.bidderState && activeAddress) {
+            bidderStates[activeAddress] = snapshot.bidderState;
+          }
+
+          if (snapshot.complianceRecord && activeAddress) {
+            complianceRecords[activeAddress] = snapshot.complianceRecord;
+          }
+
+          return [
+            catalog.slug,
+            {
+              catalog,
+              auctionAddress: catalog.protocol.auctionAddress,
+              auction: snapshot.auction,
+              bidderStates,
+              complianceRecords,
+              minIncrement: 0n,
+              paymentSymbol: "USDC",
+              assetSymbol: "RWA",
+            } satisfies AuctionRuntimeState,
+          ] as const;
+        } catch {
+          return null;
         }
+      }),
+    );
 
-        nextRpcState[catalog.slug] = {
-          ...fallback,
-          auctionAddress: catalog.protocol.auctionAddress,
-          auction: snapshot.auction,
-          bidderStates:
-            snapshot.bidderState && activeAddress
-              ? { [activeAddress]: snapshot.bidderState }
-              : {},
-          complianceRecords:
-            snapshot.complianceRecord && activeAddress
-              ? { [activeAddress]: snapshot.complianceRecord }
-              : {},
-        };
-      } catch {
-        nextRpcState[catalog.slug] = fallback;
-      }
-    }
+    const nextRpcState = Object.fromEntries(
+      entries.filter((entry): entry is readonly [string, AuctionRuntimeState] => entry !== null),
+    );
 
     startTransition(() => {
       setRpcState(nextRpcState);
     });
-  }, [activeAddress, mockState, protocolClient]);
+  }, [activeAddress, auctionProgramPublicKey, connection, protocolClient]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   const auctions = useMemo(() => {
-    const source = protocolMode === "rpc" ? rpcState : mockState;
-    return catalogAuctions.map((catalog) => source[catalog.slug] ?? mockState[catalog.slug]);
-  }, [mockState, rpcState]);
+    return catalogAuctions
+      .map((catalog) => rpcState[catalog.slug] ?? null)
+      .filter((auction): auction is AuctionRuntimeState => auction !== null);
+  }, [rpcState]);
 
   const getAuction = useCallback(
     (slug: string) => auctions.find((auction) => auction.catalog.slug === slug) ?? null,
@@ -381,17 +453,11 @@ export function ValoremAppProvider({
     [activeAddress, getAuction],
   );
 
-  const updateMockAuction = useCallback((slug: string, next: AuctionRuntimeState) => {
-    setMockState((current) => ({
-      ...current,
-      [slug]: next,
-    }));
-  }, []);
-
   const runAction = useCallback(
     async (message: string, handler: () => Promise<string | void>) => {
       try {
         const signature = await handler();
+        await refresh().catch(() => undefined);
         setFeedback({
           status: "success",
           message,
@@ -404,17 +470,13 @@ export function ValoremAppProvider({
         });
       }
     },
-    [],
+    [refresh],
   );
 
   const sendOrSimulate = useCallback(
     async (instructions: TransactionInstruction[]) => {
-      if (walletMode === "demo") {
-        return `demo-${Date.now().toString(36)}`;
-      }
-
       if (!connectedWallet || !activeAddress) {
-        throw new Error("Connect a wallet or enable the demo wallet first.");
+        throw new Error("Connect a wallet first.");
       }
 
       return sendWalletTransaction({
@@ -428,14 +490,6 @@ export function ValoremAppProvider({
   );
 
   const authenticate = useCallback(async () => {
-    if (walletMode === "demo") {
-      setFeedback({
-        status: "error",
-        message: "Demo mode cannot complete Sign-In With Solana.",
-      });
-      return;
-    }
-
     if (!connectedWallet || !connectedAddress) {
       setFeedback({
         status: "error",
@@ -501,7 +555,7 @@ export function ValoremAppProvider({
     } finally {
       setIsAuthenticating(false);
     }
-  }, [connectedAddress, connectedWallet, walletMode]);
+  }, [connectedAddress, connectedWallet]);
 
   const signOut = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -526,10 +580,6 @@ export function ValoremAppProvider({
       settlementWindowSeconds: number;
       maxBidders: number;
     }) => {
-      if (walletMode === "demo") {
-        throw new Error("Connect a real wallet to initialize an on-chain auction.");
-      }
-
       if (!connectedWallet || !activeAddress) {
         throw new Error("Connect a wallet before creating an auction.");
       }
@@ -595,14 +645,14 @@ export function ValoremAppProvider({
         throw new Error(message);
       }
     },
-    [activeAddress, connectedWallet, connection, walletMode],
+    [activeAddress, connectedWallet, connection],
   );
 
   const submitCommitment = useCallback(
     async (slug: string, bidAmount: bigint) =>
       runAction(`Commitment submitted for ${slug}.`, async () => {
         if (!activeAddress) {
-          throw new Error("Connect a wallet or enable the demo wallet to bid.");
+          throw new Error("Connect a wallet to bid.");
         }
 
         const auction = getAuction(slug);
@@ -628,19 +678,6 @@ export function ValoremAppProvider({
           createdAt: Date.now(),
         });
 
-        if (protocolMode === "mock") {
-          updateMockAuction(
-            slug,
-            submitMockCommitment({
-              state: auction,
-              walletAddress: activeAddress,
-              commitment,
-              committedAt: BigInt(Math.floor(Date.now() / 1000)),
-            }),
-          );
-          return;
-        }
-
         return sendOrSimulate([
           buildSubmitCommitmentInstruction({
             bidder: new PublicKey(activeAddress),
@@ -657,14 +694,14 @@ export function ValoremAppProvider({
           }),
         ]);
       }),
-    [activeAddress, getAuction, runAction, sendOrSimulate, updateMockAuction],
+    [activeAddress, getAuction, runAction, sendOrSimulate],
   );
 
   const revealBid = useCallback(
     async (slug: string) =>
       runAction(`Bid revealed for ${slug}.`, async () => {
         if (!activeAddress) {
-          throw new Error("Connect a wallet or enable the demo wallet first.");
+          throw new Error("Connect a wallet first.");
         }
 
         const auction = getAuction(slug);
@@ -682,20 +719,6 @@ export function ValoremAppProvider({
           throw new Error("No locally stored reveal secret for this auction.");
         }
 
-        if (protocolMode === "mock") {
-          updateMockAuction(
-            slug,
-            revealMockBid({
-              state: auction,
-              walletAddress: activeAddress,
-              bidAmount: secret.bidAmount,
-              salt: secret.salt,
-              revealedAt: BigInt(Math.floor(Date.now() / 1000)),
-            }),
-          );
-          return;
-        }
-
         return sendOrSimulate([
           buildRevealBidInstruction({
             bidder: new PublicKey(activeAddress),
@@ -705,24 +728,19 @@ export function ValoremAppProvider({
           }),
         ]);
       }),
-    [activeAddress, getAuction, runAction, sendOrSimulate, updateMockAuction],
+    [activeAddress, getAuction, runAction, sendOrSimulate],
   );
 
   const settleCandidate = useCallback(
     async (slug: string) =>
       runAction(`Settlement completed for ${slug}.`, async () => {
         if (!activeAddress) {
-          throw new Error("Connect a wallet or enable the demo wallet first.");
+          throw new Error("Connect a wallet first.");
         }
 
         const auction = getAuction(slug);
         if (!auction) {
           throw new Error("Auction not found.");
-        }
-
-        if (protocolMode === "mock") {
-          updateMockAuction(slug, settleMockCandidate(auction, activeAddress));
-          return;
         }
 
         return sendOrSimulate([
@@ -742,24 +760,19 @@ export function ValoremAppProvider({
           }),
         ]);
       }),
-    [activeAddress, getAuction, runAction, sendOrSimulate, updateMockAuction],
+    [activeAddress, getAuction, runAction, sendOrSimulate],
   );
 
   const claimRefund = useCallback(
     async (slug: string) =>
       runAction(`Refund claimed for ${slug}.`, async () => {
         if (!activeAddress) {
-          throw new Error("Connect a wallet or enable the demo wallet first.");
+          throw new Error("Connect a wallet first.");
         }
 
         const auction = getAuction(slug);
         if (!auction) {
           throw new Error("Auction not found.");
-        }
-
-        if (protocolMode === "mock") {
-          updateMockAuction(slug, claimMockRefund(auction, activeAddress));
-          return;
         }
 
         return sendOrSimulate([
@@ -777,7 +790,7 @@ export function ValoremAppProvider({
           }),
         ]);
       }),
-    [activeAddress, getAuction, runAction, sendOrSimulate, updateMockAuction],
+    [activeAddress, getAuction, runAction, sendOrSimulate],
   );
 
   const advanceToReveal = useCallback(
@@ -788,11 +801,6 @@ export function ValoremAppProvider({
           throw new Error("Auction not found.");
         }
 
-        if (protocolMode === "mock") {
-          updateMockAuction(slug, advanceMockAuctionToReveal(auction));
-          return;
-        }
-
         return sendOrSimulate([
           buildAdvanceToRevealInstruction({
             admin: auction.auction.issuer,
@@ -800,7 +808,7 @@ export function ValoremAppProvider({
           }),
         ]);
       }),
-    [getAuction, runAction, sendOrSimulate, updateMockAuction],
+    [getAuction, runAction, sendOrSimulate],
   );
 
   const closeReveal = useCallback(
@@ -811,14 +819,6 @@ export function ValoremAppProvider({
           throw new Error("Auction not found.");
         }
 
-        if (protocolMode === "mock") {
-          updateMockAuction(
-            slug,
-            closeMockReveal(auction, BigInt(Math.floor(Date.now() / 1000))),
-          );
-          return;
-        }
-
         return sendOrSimulate([
           buildCloseRevealInstruction({
             admin: auction.auction.issuer,
@@ -827,7 +827,7 @@ export function ValoremAppProvider({
           }),
         ]);
       }),
-    [getAuction, runAction, sendOrSimulate, updateMockAuction],
+    [getAuction, runAction, sendOrSimulate],
   );
 
   const recordCompliance = useCallback(
@@ -851,20 +851,6 @@ export function ValoremAppProvider({
           }),
         });
 
-        if (protocolMode === "mock") {
-          updateMockAuction(
-            slug,
-            recordMockCompliance({
-              state: auction,
-              walletAddress,
-              approved,
-              reviewedAt: BigInt(Math.floor(Date.now() / 1000)),
-              expiresAt: BigInt(Math.floor(Date.now() / 1000) + 24 * 3600),
-            }),
-          );
-          return;
-        }
-
         return sendOrSimulate([
           buildRecordComplianceInstruction({
             reviewer: auction.auction.reviewerAuthority,
@@ -876,7 +862,7 @@ export function ValoremAppProvider({
           }),
         ]);
       }),
-    [getAuction, runAction, sendOrSimulate, updateMockAuction],
+    [getAuction, runAction, sendOrSimulate],
   );
 
   const slashCandidate = useCallback(
@@ -885,18 +871,6 @@ export function ValoremAppProvider({
         const auction = getAuction(slug);
         if (!auction) {
           throw new Error("Auction not found.");
-        }
-
-        if (protocolMode === "mock") {
-          updateMockAuction(
-            slug,
-            slashMockCandidateAndAdvance(
-              auction,
-              walletAddress,
-              BigInt(Math.floor(Date.now() / 1000)),
-            ),
-          );
-          return;
         }
 
         return sendOrSimulate([
@@ -916,7 +890,7 @@ export function ValoremAppProvider({
           }),
         ]);
       }),
-    [getAuction, runAction, sendOrSimulate, updateMockAuction],
+    [getAuction, runAction, sendOrSimulate],
   );
 
   const slashUnrevealed = useCallback(
@@ -925,11 +899,6 @@ export function ValoremAppProvider({
         const auction = getAuction(slug);
         if (!auction) {
           throw new Error("Auction not found.");
-        }
-
-        if (protocolMode === "mock") {
-          updateMockAuction(slug, slashMockUnrevealed(auction, walletAddress));
-          return;
         }
 
         return sendOrSimulate([
@@ -943,7 +912,7 @@ export function ValoremAppProvider({
           }),
         ]);
       }),
-    [getAuction, runAction, sendOrSimulate, updateMockAuction],
+    [getAuction, runAction, sendOrSimulate],
   );
 
   const withdrawProceeds = useCallback(
@@ -952,11 +921,6 @@ export function ValoremAppProvider({
         const auction = getAuction(slug);
         if (!auction) {
           throw new Error("Auction not found.");
-        }
-
-        if (protocolMode === "mock") {
-          updateMockAuction(slug, withdrawMockProceeds(auction, amount));
-          return;
         }
 
         return sendOrSimulate([
@@ -970,7 +934,7 @@ export function ValoremAppProvider({
           }),
         ]);
       }),
-    [getAuction, runAction, sendOrSimulate, updateMockAuction],
+    [getAuction, runAction, sendOrSimulate],
   );
 
   const value = useMemo<ValoremAppContextValue>(
@@ -987,8 +951,6 @@ export function ValoremAppProvider({
       auctions,
       feedback,
       refresh,
-      enableDemoWallet: () => setDemoWalletEnabled(true),
-      disableDemoWallet: () => setDemoWalletEnabled(false),
       authenticate,
       signOut,
       getAuction,

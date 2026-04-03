@@ -10,7 +10,7 @@ describe("reveal secret storage", () => {
 
   it("stores and reloads wallet-scoped reveal secrets", () => {
     saveRevealSecret({
-      cluster: "localnet",
+      cluster: "devnet",
       programId: "program-1",
       auctionAddress: "auction-1",
       walletAddress: "wallet-1",
@@ -20,7 +20,7 @@ describe("reveal secret storage", () => {
     });
 
     const secret = loadRevealSecret({
-      cluster: "localnet",
+      cluster: "devnet",
       programId: "program-1",
       auctionAddress: "auction-1",
       walletAddress: "wallet-1",
@@ -32,7 +32,7 @@ describe("reveal secret storage", () => {
 
   it("removes secrets by exact wallet and auction scope", () => {
     saveRevealSecret({
-      cluster: "localnet",
+      cluster: "devnet",
       programId: "program-1",
       auctionAddress: "auction-1",
       walletAddress: "wallet-1",
@@ -42,7 +42,7 @@ describe("reveal secret storage", () => {
     });
 
     removeRevealSecret({
-      cluster: "localnet",
+      cluster: "devnet",
       programId: "program-1",
       auctionAddress: "auction-1",
       walletAddress: "wallet-1",
@@ -50,7 +50,7 @@ describe("reveal secret storage", () => {
 
     expect(
       loadRevealSecret({
-        cluster: "localnet",
+        cluster: "devnet",
         programId: "program-1",
         auctionAddress: "auction-1",
         walletAddress: "wallet-1",

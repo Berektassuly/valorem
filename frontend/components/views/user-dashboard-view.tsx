@@ -25,7 +25,6 @@ export function UserDashboardView() {
     getWalletAuctionState,
     revealBid,
     settleCandidate,
-    walletMode,
   } = useValoremApp();
 
   const dashboardRows = buildDashboardRows(auctions, activeAddress);
@@ -45,7 +44,7 @@ export function UserDashboardView() {
       ),
       accent: true,
     },
-    { label: "Wallet mode", value: walletMode === "wallet-standard" ? "Live" : walletMode === "demo" ? "Demo" : "Standby" },
+    { label: "Wallet status", value: activeAddress ? "Connected" : "Standby" },
   ];
 
   const bidColumns = [
@@ -143,117 +142,133 @@ export function UserDashboardView() {
         <DataTable columns={bidColumns} rows={bidRows} />
       </Panel>
 
-      <section className="space-y-6">
-        <SectionHeading
-          eyebrow="Current focus"
-          title="Priority position"
-          description="The larger compositional field below mirrors the original dashboard rhythm, but its numbers now come from protocol state."
-          action={
-            <ActionLink href="/marketplace" tone="ghost">
-              Explore More
-            </ActionLink>
-          }
-        />
+      {priorityAuction ? (
+        <section className="space-y-6">
+          <SectionHeading
+            eyebrow="Current focus"
+            title="Priority position"
+            description="The larger compositional field below mirrors the original dashboard rhythm, but its numbers now come from protocol state."
+            action={
+              <ActionLink href="/marketplace" tone="ghost">
+                Explore More
+              </ActionLink>
+            }
+          />
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.14fr)_340px]">
-          <Panel className="space-y-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-copper">
-                  Current asset
-                </p>
-                <h2 className="mt-2 text-3xl font-semibold uppercase tracking-[-0.05em] text-ink">
-                  {priorityAuction.catalog.title}
-                </h2>
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.14fr)_340px]">
+            <Panel className="space-y-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-copper">
+                    Current asset
+                  </p>
+                  <h2 className="mt-2 text-3xl font-semibold uppercase tracking-[-0.05em] text-ink">
+                    {priorityAuction.catalog.title}
+                  </h2>
+                </div>
+                <Tag tone="dark">
+                  {priorityState?.isLeadingCandidate ? "Lead candidate" : "Tracked lot"}
+                </Tag>
               </div>
-              <Tag tone="dark">
-                {priorityState?.isLeadingCandidate ? "Lead candidate" : "Tracked lot"}
-              </Tag>
+
+              <AssetArtwork
+                variant={priorityAuction.catalog.artwork}
+                label={priorityAuction.catalog.category}
+                className="h-72 sm:h-[340px]"
+              />
+              <MetricGrid
+                columns={3}
+                items={[
+                  {
+                    label: "Wallet bid",
+                    value: priorityState?.bidderState?.bidAmount
+                      ? formatShortUsd(priorityState.bidderState.bidAmount)
+                      : "None",
+                    accent: true,
+                  },
+                  {
+                    label: "Phase",
+                    value: formatPhaseLabel(priorityAuction.auction.phase),
+                  },
+                  {
+                    label: "Position",
+                    value: priorityState?.bidderState
+                      ? formatRank(priorityState.bidderState.rank)
+                      : "None",
+                  },
+                ]}
+              />
+            </Panel>
+
+            <div className="space-y-6">
+              <Panel className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold uppercase tracking-[0.14em] text-ink">
+                    Stored reveal secrets
+                  </p>
+                  <Tag tone="copper">{storedSecrets.length}</Tag>
+                </div>
+                <div className="space-y-3">
+                  {storedSecrets.length > 0 ? (
+                    storedSecrets.map((secret) => (
+                      <div key={`${secret.auctionAddress}:${secret.walletAddress}`} className="border border-line bg-surface p-4">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted">
+                          {secret.auctionAddress.slice(0, 6)}...{secret.auctionAddress.slice(-4)}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-muted">
+                          Local reveal secret stored for {new Date(secret.createdAt).toLocaleString()}.
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="border border-line bg-surface p-4 text-sm leading-6 text-muted">
+                      No local reveal secrets are stored for the current wallet yet.
+                    </div>
+                  )}
+                </div>
+              </Panel>
+
+              <Panel className="space-y-4">
+                <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
+                  Wallet activity
+                </p>
+                <div className="space-y-3">
+                  {dashboardRows.length > 0 ? (
+                    dashboardRows.slice(0, 3).map(({ auction, walletState }) => (
+                      <div key={auction.catalog.slug} className="border border-line bg-surface p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold uppercase tracking-[0.12em] text-ink">
+                            {auction.catalog.title}
+                          </p>
+                          <Tag tone={walletState.isLeadingCandidate ? "copper" : "default"}>
+                            {walletState.actions[0] ?? "Waiting"}
+                          </Tag>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-muted">
+                          Phase: {formatPhaseLabel(auction.auction.phase)}. Rank:{" "}
+                          {walletState.bidderState ? formatRank(walletState.bidderState.rank) : "none"}.
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="border border-line bg-surface p-4 text-sm leading-6 text-muted">
+                      No devnet bidder state is linked to the connected wallet yet.
+                    </div>
+                  )}
+                </div>
+              </Panel>
             </div>
-
-            <AssetArtwork
-              variant={priorityAuction.catalog.artwork}
-              label={priorityAuction.catalog.category}
-              className="h-72 sm:h-[340px]"
-            />
-            <MetricGrid
-              columns={3}
-              items={[
-                {
-                  label: "Wallet bid",
-                  value: priorityState?.bidderState?.bidAmount
-                    ? formatShortUsd(priorityState.bidderState.bidAmount)
-                    : "None",
-                  accent: true,
-                },
-                {
-                  label: "Phase",
-                  value: formatPhaseLabel(priorityAuction.auction.phase),
-                },
-                {
-                  label: "Position",
-                  value: priorityState?.bidderState
-                    ? formatRank(priorityState.bidderState.rank)
-                    : "None",
-                },
-              ]}
-            />
-          </Panel>
-
-          <div className="space-y-6">
-            <Panel className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold uppercase tracking-[0.14em] text-ink">
-                  Stored reveal secrets
-                </p>
-                <Tag tone="copper">{storedSecrets.length}</Tag>
-              </div>
-              <div className="space-y-3">
-                {storedSecrets.length > 0 ? (
-                  storedSecrets.map((secret) => (
-                    <div key={`${secret.auctionAddress}:${secret.walletAddress}`} className="border border-line bg-surface p-4">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted">
-                        {secret.auctionAddress.slice(0, 6)}...{secret.auctionAddress.slice(-4)}
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-muted">
-                        Local reveal secret stored for {new Date(secret.createdAt).toLocaleString()}.
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="border border-line bg-surface p-4 text-sm leading-6 text-muted">
-                    No local reveal secrets are stored for the current wallet yet.
-                  </div>
-                )}
-              </div>
-            </Panel>
-
-            <Panel className="space-y-4">
-              <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
-                Wallet activity
-              </p>
-              <div className="space-y-3">
-                {dashboardRows.slice(0, 3).map(({ auction, walletState }) => (
-                  <div key={auction.catalog.slug} className="border border-line bg-surface p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold uppercase tracking-[0.12em] text-ink">
-                        {auction.catalog.title}
-                      </p>
-                      <Tag tone={walletState.isLeadingCandidate ? "copper" : "default"}>
-                        {walletState.actions[0] ?? "Waiting"}
-                      </Tag>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-muted">
-                      Phase: {formatPhaseLabel(auction.auction.phase)}. Rank:{" "}
-                      {walletState.bidderState ? formatRank(walletState.bidderState.rank) : "none"}.
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </Panel>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <Panel className="space-y-4">
+          <SectionHeading
+            eyebrow="Current focus"
+            title="No devnet positions yet"
+            description="Connect a wallet and place or reveal a bid on an active devnet auction to populate the dashboard."
+          />
+        </Panel>
+      )}
     </div>
   );
 }

@@ -54,8 +54,6 @@ export function WalletControl() {
     authSession,
     authenticate,
     connectedWallet,
-    disableDemoWallet,
-    enableDemoWallet,
     feedback,
     isAuthenticating,
     signOut,
@@ -69,12 +67,8 @@ export function WalletControl() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <Tag tone={walletMode === "wallet-standard" ? "dark" : walletMode === "demo" ? "copper" : "default"}>
-          {walletMode === "wallet-standard"
-            ? "Wallet"
-            : walletMode === "demo"
-              ? "Demo wallet"
-              : "Disconnected"}
+        <Tag tone={walletMode === "wallet-standard" ? "dark" : "default"}>
+          {walletMode === "wallet-standard" ? "Wallet" : "Disconnected"}
         </Tag>
         <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
           {formatAddress(activeAddress)}
@@ -90,22 +84,19 @@ export function WalletControl() {
         </p>
       </div>
 
-      {walletMode === "demo" ? (
-        <ActionButton tone="ghost" onClick={disableDemoWallet} className="w-full justify-between">
-          <span>Disable demo wallet</span>
-          <span>Close</span>
-        </ActionButton>
-      ) : connectedWallet ? (
+      {connectedWallet ? (
         <WalletDisconnectAction wallet={connectedWallet} />
       ) : (
         <div className="space-y-2">
-          {wallets.map((wallet) => (
-            <WalletConnectAction key={wallet.name} wallet={wallet} />
-          ))}
-          <ActionButton tone="ink" onClick={enableDemoWallet} className="w-full justify-between">
-            <span>Use demo wallet</span>
-            <span>Instant</span>
-          </ActionButton>
+          {wallets.length > 0 ? (
+            wallets.map((wallet) => (
+              <WalletConnectAction key={wallet.name} wallet={wallet} />
+            ))
+          ) : (
+            <div className="border border-line bg-surface p-4 text-sm leading-6 text-muted">
+              No Wallet Standard wallets were detected in this browser.
+            </div>
+          )}
         </div>
       )}
 
@@ -120,17 +111,17 @@ export function WalletControl() {
           <span>Sign out</span>
           <span>Session</span>
         </ActionButton>
-      ) : connectedWallet && walletMode !== "demo" ? (
-          <ActionButton
-            onClick={() => {
-              void authenticate();
-            }}
-            disabled={isAuthenticating}
-            className="w-full justify-between"
-          >
-            <span>{isAuthenticating ? "Signing in" : "Sign In With Solana"}</span>
-            <span>Cookie auth</span>
-          </ActionButton>
+      ) : connectedWallet ? (
+        <ActionButton
+          onClick={() => {
+            void authenticate();
+          }}
+          disabled={isAuthenticating}
+          className="w-full justify-between"
+        >
+          <span>{isAuthenticating ? "Signing in" : "Sign In With Solana"}</span>
+          <span>Cookie auth</span>
+        </ActionButton>
       ) : null}
 
       {feedback.message ? (

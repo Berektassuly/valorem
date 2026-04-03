@@ -34,7 +34,7 @@ export default async function RootLayout({
             <footer className="relative border-t border-line/70 bg-paper/70">
               <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-4 py-5 text-[10px] uppercase tracking-[0.34em] text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
                 <span>Valorem / Protocol-aware auction terminal</span>
-                <span>Wallet and RPC mode are runtime-configurable. Demo mode remains available locally.</span>
+                <span>Wallet sessions and protocol reads are wired directly to Solana devnet.</span>
               </div>
             </footer>
           </div>

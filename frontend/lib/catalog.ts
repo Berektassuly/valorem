@@ -98,7 +98,7 @@ const catalogSeeds: CatalogSeedRecord[] = [
         "A complementary certificate state demonstrates how the Valorem interface handles successful outcomes without breaking the monochrome, high-trust atmosphere.",
       secondaryArtwork: "orbital",
       diligence: [
-        "Property engineering report and tenancy roll are represented as verified workflow checkpoints rather than static mock copy.",
+        "Property engineering report and tenancy roll are represented as verified workflow checkpoints rather than placeholder copy.",
         "Settlement amount and payment timing are rendered from protocol state while keeping the original numeric emphasis and negative space.",
         "Supporting modules stay sparse so the composition still reads like an editorial auction terminal rather than a crowded dashboard.",
       ],
@@ -170,9 +170,9 @@ const catalogSeeds: CatalogSeedRecord[] = [
         "This certificate view is the clearest place to stage winner approval, remaining payment, and asset release confirmation.",
       secondaryArtwork: "orbital",
       diligence: [
-        "The mock local state mirrors the canonical settlement path through compliance approval and controlled release.",
+        "The live protocol state mirrors the canonical settlement path through compliance approval and controlled release.",
         "Issuer controls can reject the active candidate and advance the right to settle to the next bidder.",
-        "Transfer-hook constraints remain explicit in the protocol boundary even if the demo runtime is using mock chain state.",
+        "Transfer-hook constraints remain explicit in the protocol boundary while the interface reads directly from devnet state.",
       ],
     },
   },
@@ -243,7 +243,7 @@ const catalogSeeds: CatalogSeedRecord[] = [
       secondaryArtwork: "textile",
       diligence: [
         "Industrial occupancy and documentation notes remain secondary to the auction-control surface.",
-        "The mock flow demonstrates how the dashboard keeps fallback positions legible without cluttering the main marketplace.",
+        "The live flow demonstrates how the dashboard keeps fallback positions legible without cluttering the main marketplace.",
         "Settlement promotion and refund release remain the key functional states on this asset.",
       ],
     },

@@ -27,9 +27,7 @@ export function IssuerTerminalView() {
   const [selectedSlug, setSelectedSlug] = useState(auctions[0]?.catalog.slug ?? "");
   const issuerRows = buildIssuerRows(auctions);
   const activeAuction =
-    auctions.find((auction) => auction.catalog.slug === selectedSlug) ?? auctions[0];
-  const activeCandidate =
-    activeAuction.auction.rankedBidders[activeAuction.auction.currentSettlementIndex];
+    auctions.find((auction) => auction.catalog.slug === selectedSlug) ?? auctions[0] ?? null;
 
   const columns = [
     { key: "program", label: "Program" },
@@ -59,12 +57,54 @@ export function IssuerTerminalView() {
     stage: <Tag tone={row.tone}>{row.stage}</Tag>,
   }));
 
+  if (!activeAuction) {
+    return (
+      <div className="space-y-8">
+        <PageIntro
+          eyebrow="Issuer Terminal"
+          title="Issuer terminal"
+          description="Underwriting, phase control, compliance review, slashing, and proceeds withdrawal now sit on live devnet protocol accounts."
+          aside={
+            <Panel className="w-full max-w-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <Tag tone="dark">Primary desk</Tag>
+                <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted">
+                  Issuer / 0
+                </p>
+              </div>
+              <MetricGrid
+                columns={2}
+                items={[
+                  { label: "Programs live", value: "0" },
+                  { label: "Settlement queue", value: "0" },
+                  { label: "Gross visible", value: "$0", accent: true },
+                  { label: "Mode", value: "Issuer controls" },
+                ]}
+              />
+            </Panel>
+          }
+        />
+
+        <Panel className="space-y-4">
+          <SectionHeading
+            eyebrow="No auctions"
+            title="No devnet auctions discovered"
+            description="Initialize an auction on devnet, then return here to manage reveal, compliance, settlement, and proceeds."
+          />
+        </Panel>
+      </div>
+    );
+  }
+
+  const activeCandidate =
+    activeAuction.auction.rankedBidders[activeAuction.auction.currentSettlementIndex];
+
   return (
     <div className="space-y-8">
       <PageIntro
         eyebrow="Issuer Terminal"
         title="Issuer terminal"
-        description="Underwriting, phase control, compliance review, slashing, and proceeds withdrawal now sit on top of the protocol model instead of fixed mock values. The interface stays sparse and editorial while still exposing the key issuer workflows."
+        description="Underwriting, phase control, compliance review, slashing, and proceeds withdrawal now sit on live devnet protocol accounts. The interface stays sparse and editorial while still exposing the key issuer workflows."
         aside={
           <Panel className="w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between">
@@ -328,19 +368,27 @@ export function IssuerTerminalView() {
                   <Tag tone="alert">Admin action</Tag>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  {Object.entries(activeAuction.bidderStates)
-                    .filter(([, bidderState]) => !bidderState.revealed && !bidderState.depositSlashed)
-                    .map(([walletAddress]) => (
-                      <ActionButton
-                        key={walletAddress}
-                        tone="ghost"
-                        onClick={() => {
-                          void slashUnrevealed(activeAuction.catalog.slug, walletAddress);
-                        }}
-                      >
-                        Slash {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
-                      </ActionButton>
-                    ))}
+                  {Object.entries(activeAuction.bidderStates).some(
+                    ([, bidderState]) => !bidderState.revealed && !bidderState.depositSlashed,
+                  ) ? (
+                    Object.entries(activeAuction.bidderStates)
+                      .filter(([, bidderState]) => !bidderState.revealed && !bidderState.depositSlashed)
+                      .map(([walletAddress]) => (
+                        <ActionButton
+                          key={walletAddress}
+                          tone="ghost"
+                          onClick={() => {
+                            void slashUnrevealed(activeAuction.catalog.slug, walletAddress);
+                          }}
+                        >
+                          Slash {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
+                        </ActionButton>
+                      ))
+                  ) : (
+                    <p className="text-sm leading-6 text-alert">
+                      No unrevealed bidder states were discovered for this devnet auction.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
