@@ -1,8 +1,8 @@
 import { VALOREM_AUCTION_PROGRAM_ID } from "@valorem/sdk";
+import { publicEnv } from "@/lib/env";
 
-const rpcUrl =
-  process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
-const cluster = process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "devnet";
+const rpcUrl = publicEnv.NEXT_PUBLIC_SOLANA_RPC_URL;
+const cluster = publicEnv.NEXT_PUBLIC_SOLANA_CLUSTER;
 
 export const protocolCluster = cluster;
 export const protocolRpcUrl = rpcUrl;

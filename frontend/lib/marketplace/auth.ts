@@ -1,15 +1,14 @@
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { env } from "@/lib/env";
 import type { AuthSession } from "./types";
 
 const SESSION_COOKIE_NAME = "valorem_session";
 const SESSION_DURATION_SECONDS = 7 * 24 * 60 * 60;
 const CHALLENGE_DURATION_MINUTES = 10;
 
-function getAuthSecret() {
-  return process.env.VALOREM_AUTH_SECRET ?? "valorem-dev-secret-change-me";
-}
+const authSecret = env.VALOREM_AUTH_SECRET;
 
 function toBase64Url(value: Buffer | string) {
   const buffer = typeof value === "string" ? Buffer.from(value, "utf8") : value;
@@ -30,7 +29,7 @@ function fromBase64Url(value: string) {
 }
 
 function signValue(value: string) {
-  return toBase64Url(createHmac("sha256", getAuthSecret()).update(value).digest());
+  return toBase64Url(createHmac("sha256", authSecret).update(value).digest());
 }
 
 function createSessionToken(session: AuthSession) {
@@ -76,7 +75,7 @@ function buildCookieOptions(maxAge: number) {
     maxAge,
     path: "/",
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: env.NODE_ENV === "production",
   };
 }
 

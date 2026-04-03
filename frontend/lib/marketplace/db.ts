@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { env } from "@/lib/env";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -7,16 +8,8 @@ declare global {
   var __valoremSchemaPromise__: Promise<void> | undefined;
 }
 
-function getDatabaseUrl() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("DATABASE_URL is required for dynamic marketplace features.");
-  }
-  return url;
-}
-
 function createSqlClient() {
-  return postgres(getDatabaseUrl(), {
+  return postgres(env.DATABASE_URL, {
     idle_timeout: 10,
     max: 5,
     prepare: false,
