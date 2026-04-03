@@ -149,7 +149,7 @@ export function WalletControl() {
   });
 
   return (
-    <div ref={containerRef} className="relative shrink-0">
+    <div ref={containerRef} className="relative">
       <button
         type="button"
         aria-expanded={isOpen}
@@ -184,102 +184,112 @@ export function WalletControl() {
       </button>
 
       {isOpen ? (
-        <div
-          id={panelId}
-          role="dialog"
-          aria-label="Wallet controls"
-          className="hairline panel-shadow absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] border border-line bg-surface p-5"
-        >
-          <div className="space-y-4">
-            <div className="flex items-start justify-between gap-3 border-b border-line/70 pb-4">
-              <div>
-                <p className="font-mono text-[9px] uppercase tracking-[0.28em] text-copper">
-                  Wallet Control
-                </p>
-                <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.24em] text-muted">
-                  Solana session controls
-                </p>
+        <>
+          <button
+            type="button"
+            aria-label="Close wallet controls"
+            onClick={() => {
+              setIsOpen(false);
+            }}
+            className="fixed inset-0 z-40 cursor-default bg-transparent"
+          />
+          <div
+            id={panelId}
+            role="dialog"
+            aria-label="Wallet controls"
+            className="absolute right-0 top-full mt-2 w-80 z-50 border border-line bg-surface p-4 panel-shadow"
+          >
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-3 border-b border-line/70 pb-4">
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.28em] text-copper">
+                    Wallet Control
+                  </p>
+                  <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.24em] text-muted">
+                    Solana session controls
+                  </p>
+                </div>
+                {hasAuthenticatedWallet ? <Tag tone="copper">Auth</Tag> : null}
               </div>
-              {hasAuthenticatedWallet ? <Tag tone="copper">Auth</Tag> : null}
-            </div>
 
-            <div className="space-y-3">
-              <StatusRow
-                tag={walletMode === "wallet-standard" ? "Wallet" : "Disconnected"}
-                tone={walletMode === "wallet-standard" ? "dark" : "default"}
-                value={formatAddress(activeAddress)}
-              />
-              <StatusRow
-                tag={authSession ? "Authenticated" : "Session idle"}
-                tone={authSession ? (sessionMatchesWallet ? "copper" : "default") : "default"}
-                value={authSession ? formatAddress(authSession.walletAddress) : "Sign-in required"}
-              />
-            </div>
-
-            {connectedWallet ? (
-              <WalletDisconnectAction
-                wallet={connectedWallet}
-                onSelect={() => {
-                  setIsOpen(false);
-                }}
-              />
-            ) : (
-              <div className="space-y-2">
-                {wallets.length > 0 ? (
-                  wallets.map((wallet) => (
-                    <WalletConnectAction
-                      key={wallet.name}
-                      wallet={wallet}
-                      onSelect={() => {
-                        setIsOpen(false);
-                      }}
-                    />
-                  ))
-                ) : (
-                  <div className="border border-line bg-surface-muted p-4 text-sm leading-6 text-muted">
-                    No Wallet Standard wallets were detected in this browser.
-                  </div>
-                )}
+              <div className="space-y-3">
+                <StatusRow
+                  tag={walletMode === "wallet-standard" ? "Wallet" : "Disconnected"}
+                  tone={walletMode === "wallet-standard" ? "dark" : "default"}
+                  value={formatAddress(activeAddress)}
+                />
+                <StatusRow
+                  tag={authSession ? "Authenticated" : "Session idle"}
+                  tone={authSession ? (sessionMatchesWallet ? "copper" : "default") : "default"}
+                  value={authSession ? formatAddress(authSession.walletAddress) : "Sign-in required"}
+                />
               </div>
-            )}
 
-            {authSession ? (
-              <ActionButton
-                tone="ink"
-                onClick={() => {
-                  setIsOpen(false);
-                  void signOut();
-                }}
-                className="w-full justify-between"
-              >
-                <span>Sign out</span>
-                <span>Session</span>
-              </ActionButton>
-            ) : connectedWallet ? (
-              <ActionButton
-                onClick={() => {
-                  setIsOpen(false);
-                  void authenticate();
-                }}
-                disabled={isAuthenticating}
-                className="w-full justify-between"
-              >
-                <span>{isAuthenticating ? "Signing in" : "Sign In With Solana"}</span>
-                <span>Cookie auth</span>
-              </ActionButton>
-            ) : null}
+              {connectedWallet ? (
+                <WalletDisconnectAction
+                  wallet={connectedWallet}
+                  onSelect={() => {
+                    setIsOpen(false);
+                  }}
+                />
+              ) : (
+                <div className="space-y-2">
+                  {wallets.length > 0 ? (
+                    wallets.map((wallet) => (
+                      <WalletConnectAction
+                        key={wallet.name}
+                        wallet={wallet}
+                        onSelect={() => {
+                          setIsOpen(false);
+                        }}
+                      />
+                    ))
+                  ) : (
+                    <div className="border border-line bg-surface-muted p-4 text-sm leading-6 text-muted">
+                      No Wallet Standard wallets were detected in this browser.
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {feedback.message ? (
-              <p
-                className={`text-xs leading-6 ${
-                  feedback.status === "error" ? "text-alert" : "text-muted"
-                }`}
-              >
-                {feedback.message}
-              </p>
-            ) : null}
+              {authSession ? (
+                <ActionButton
+                  tone="ink"
+                  onClick={() => {
+                    setIsOpen(false);
+                    void signOut();
+                  }}
+                  className="w-full justify-between"
+                >
+                  <span>Sign out</span>
+                  <span>Session</span>
+                </ActionButton>
+              ) : connectedWallet ? (
+                <ActionButton
+                  onClick={() => {
+                    setIsOpen(false);
+                    void authenticate();
+                  }}
+                  disabled={isAuthenticating}
+                  className="w-full justify-between"
+                >
+                  <span>{isAuthenticating ? "Signing in" : "Sign In With Solana"}</span>
+                  <span>Cookie auth</span>
+                </ActionButton>
+              ) : null}
+
+              {feedback.message ? (
+                <p
+                  className={`text-xs leading-6 ${
+                    feedback.status === "error" ? "text-alert" : "text-muted"
+                  }`}
+                >
+                  {feedback.message}
+                </p>
+              ) : null}
+            </div>
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   );
