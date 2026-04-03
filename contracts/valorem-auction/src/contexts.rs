@@ -19,8 +19,8 @@ pub struct InitializeAuction<'info> {
     pub issuer: Signer<'info>,
     /// CHECK: Reviewer/admin authority recorded on the auction.
     pub reviewer: UncheckedAccount<'info>,
-    pub asset_mint: InterfaceAccount<'info, Mint>,
-    pub payment_mint: InterfaceAccount<'info, Mint>,
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub payment_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(
         init,
         payer = issuer,
@@ -28,7 +28,7 @@ pub struct InitializeAuction<'info> {
         seeds = [AUCTION_SEED, issuer.key().as_ref(), args.auction_seed.as_ref()],
         bump
     )]
-    pub auction: Account<'info, Auction>,
+    pub auction: Box<Account<'info, Auction>>,
     #[account(
         init,
         payer = issuer,
@@ -36,7 +36,7 @@ pub struct InitializeAuction<'info> {
         associated_token::authority = auction,
         associated_token::token_program = token_program
     )]
-    pub asset_vault: InterfaceAccount<'info, TokenAccount>,
+    pub asset_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         init,
         payer = issuer,
@@ -44,9 +44,9 @@ pub struct InitializeAuction<'info> {
         associated_token::authority = auction,
         associated_token::token_program = token_program
     )]
-    pub payment_vault: InterfaceAccount<'info, TokenAccount>,
+    pub payment_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(constraint = issuer_payment_destination.mint == payment_mint.key() @ AuctionError::PaymentMintMismatch)]
-    pub issuer_payment_destination: InterfaceAccount<'info, TokenAccount>,
+    pub issuer_payment_destination: Box<InterfaceAccount<'info, TokenAccount>>,
     /// CHECK: Created by the hook program during CPI.
     #[account(mut)]
     pub hook_config: UncheckedAccount<'info>,
@@ -160,35 +160,35 @@ pub struct RecordCompliance<'info> {
 pub struct SettleCandidate<'info> {
     #[account(mut)]
     pub bidder: Signer<'info>,
-    pub asset_mint: InterfaceAccount<'info, Mint>,
-    pub payment_mint: InterfaceAccount<'info, Mint>,
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub payment_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(mut, has_one = asset_mint @ AuctionError::AssetMintMismatch, has_one = payment_mint @ AuctionError::PaymentMintMismatch)]
-    pub auction: Account<'info, Auction>,
+    pub auction: Box<Account<'info, Auction>>,
     #[account(
         mut,
         seeds = [BIDDER_SEED, auction.key().as_ref(), bidder.key().as_ref()],
         bump = bidder_state.bump
     )]
-    pub bidder_state: Account<'info, BidderState>,
+    pub bidder_state: Box<Account<'info, BidderState>>,
     #[account(
         seeds = [COMPLIANCE_SEED, auction.key().as_ref(), bidder.key().as_ref()],
         bump = compliance_record.bump
     )]
-    pub compliance_record: Account<'info, ComplianceRecord>,
+    pub compliance_record: Box<Account<'info, ComplianceRecord>>,
     #[account(mut, address = auction.payment_vault)]
-    pub payment_vault: InterfaceAccount<'info, TokenAccount>,
+    pub payment_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         mut,
         constraint = bidder_payment_account.mint == payment_mint.key() @ AuctionError::PaymentMintMismatch,
         constraint = bidder_payment_account.owner == bidder.key() @ AuctionError::Unauthorized
     )]
-    pub bidder_payment_account: InterfaceAccount<'info, TokenAccount>,
+    pub bidder_payment_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut, address = auction.asset_vault)]
-    pub asset_vault: InterfaceAccount<'info, TokenAccount>,
+    pub asset_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut, constraint = bidder_asset_account.mint == asset_mint.key() @ AuctionError::AssetMintMismatch)]
-    pub bidder_asset_account: InterfaceAccount<'info, TokenAccount>,
+    pub bidder_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(seeds = [HOOK_CONFIG_SEED, asset_mint.key().as_ref()], bump = hook_config.bump, seeds::program = valorem_transfer_hook::ID)]
-    pub hook_config: Account<'info, HookConfig>,
+    pub hook_config: Box<Account<'info, HookConfig>>,
     /// CHECK: Hook validation PDA verified in the handler.
     #[account(mut)]
     pub extra_account_meta_list: UncheckedAccount<'info>,
@@ -198,7 +198,7 @@ pub struct SettleCandidate<'info> {
         bump = transfer_permit.bump,
         seeds::program = valorem_transfer_hook::ID
     )]
-    pub transfer_permit: Account<'info, TransferPermit>,
+    pub transfer_permit: Box<Account<'info, TransferPermit>>,
     pub transfer_hook_program: Program<'info, valorem_transfer_hook::program::ValoremTransferHook>,
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
