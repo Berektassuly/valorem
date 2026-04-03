@@ -1,20 +1,8 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Instrument_Sans } from "next/font/google";
 import { AppProviders } from "@/components/providers/app-providers";
 import { SiteHeader } from "@/components/site-header";
 import { getAuthSession } from "@/lib/marketplace/auth";
 import "./globals.css";
-
-const instrumentSans = Instrument_Sans({
-  variable: "--font-instrument-sans",
-  subsets: ["latin"],
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  variable: "--font-ibm-plex-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-});
 
 export const metadata: Metadata = {
   title: {
@@ -33,10 +21,7 @@ export default async function RootLayout({
   const session = await getAuthSession();
 
   return (
-    <html
-      lang="en"
-      className={`${instrumentSans.variable} ${ibmPlexMono.variable} h-full scroll-smooth`}
-    >
+    <html lang="en" className="h-full scroll-smooth">
       <body className="min-h-full bg-paper text-ink antialiased">
         <AppProviders initialSession={session}>
           <div className="relative isolate min-h-screen overflow-hidden">

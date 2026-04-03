@@ -19,8 +19,8 @@
   --color-copper-soft: #c18152;
   --color-alert: #cf5d3d;
   --color-success: #385739;
-  --font-sans: "Instrument Sans", "Instrument Sans Fallback", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
+  --font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", "Nimbus Sans", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", "SFMono-Regular", "Berkeley Mono", "IBM Plex Mono", "Consolas", "Liberation Mono", monospace;
   --shadow-panel: 0 24px 60px rgba(19, 17, 15, 0.08);
 }
 

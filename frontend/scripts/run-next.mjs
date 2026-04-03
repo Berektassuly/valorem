@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import path from "node:path";
+import { createRequire } from "node:module";
 
 const [subcommand, ...args] = process.argv.slice(2);
 
@@ -7,16 +7,11 @@ if (!subcommand) {
   throw new Error("Expected a Next.js subcommand.");
 }
 
-const command = path.join(
-  process.cwd(),
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "next.cmd" : "next",
-);
+const require = createRequire(import.meta.url);
+const nextCliEntrypoint = require.resolve("next/dist/bin/next");
 
-const result = spawnSync(command, [subcommand, ...args], {
+const result = spawnSync(process.execPath, [nextCliEntrypoint, subcommand, ...args], {
   stdio: "inherit",
-  shell: process.platform === "win32",
   env: {
     ...process.env,
     NEXT_IGNORE_INCORRECT_LOCKFILE: "1",
