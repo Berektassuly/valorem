@@ -314,6 +314,12 @@ function bytesToBase64(bytes: Uint8Array) {
   return window.btoa(binary);
 }
 
+function delay(milliseconds: number) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, milliseconds);
+  });
+}
+
 async function signWalletMessage(params: {
   wallet: UiWallet;
   accountAddress: string;
@@ -357,62 +363,60 @@ export function ValoremAppProvider({
   const protocolClient = useMemo(() => new ValoremProtocolClient(connection, "confirmed"), [connection]);
 
   const refresh = useCallback(async () => {
-    const entries = await Promise.all(
-      catalogAuctions.map(async (catalog) => {
-        const auctionAddress = new PublicKey(catalog.protocol.auctionAddress);
+    const activePublicKey = activeAddress ? new PublicKey(activeAddress) : undefined;
+    const nextEntries: Array<readonly [string, AuctionRuntimeState]> = [];
 
-        try {
-          const [snapshot, bidderStates, complianceRecords] = await Promise.all([
-            protocolClient.fetchAuctionSnapshot(
-              auctionAddress,
-              activeAddress ? new PublicKey(activeAddress) : undefined,
-            ),
-            fetchBidderStatesForAuction({
-              connection,
-              programId: auctionProgramPublicKey,
-              auctionAddress,
-            }),
-            fetchComplianceRecordsForAuction({
-              connection,
-              programId: auctionProgramPublicKey,
-              auctionAddress,
-            }),
-          ]);
+    for (const [index, catalog] of catalogAuctions.entries()) {
+      if (index > 0) {
+        await delay(120);
+      }
 
-          if (!snapshot) {
-            return null;
-          }
+      const auctionAddress = new PublicKey(catalog.protocol.auctionAddress);
 
-          if (snapshot.bidderState && activeAddress) {
-            bidderStates[activeAddress] = snapshot.bidderState;
-          }
-
-          if (snapshot.complianceRecord && activeAddress) {
-            complianceRecords[activeAddress] = snapshot.complianceRecord;
-          }
-
-          return [
-            catalog.slug,
-            {
-              catalog,
-              auctionAddress: catalog.protocol.auctionAddress,
-              auction: snapshot.auction,
-              bidderStates,
-              complianceRecords,
-              minIncrement: 0n,
-              paymentSymbol: "USDC",
-              assetSymbol: "RWA",
-            } satisfies AuctionRuntimeState,
-          ] as const;
-        } catch {
-          return null;
+      try {
+        const snapshot = await protocolClient.fetchAuctionSnapshot(auctionAddress, activePublicKey);
+        if (!snapshot) {
+          continue;
         }
-      }),
-    );
 
-    const nextRpcState = Object.fromEntries(
-      entries.filter((entry): entry is readonly [string, AuctionRuntimeState] => entry !== null),
-    );
+        const bidderStates = await fetchBidderStatesForAuction({
+          connection,
+          programId: auctionProgramPublicKey,
+          auctionAddress,
+        });
+        const complianceRecords = await fetchComplianceRecordsForAuction({
+          connection,
+          programId: auctionProgramPublicKey,
+          auctionAddress,
+        });
+
+        if (snapshot.bidderState && activeAddress) {
+          bidderStates[activeAddress] = snapshot.bidderState;
+        }
+
+        if (snapshot.complianceRecord && activeAddress) {
+          complianceRecords[activeAddress] = snapshot.complianceRecord;
+        }
+
+        nextEntries.push([
+          catalog.slug,
+          {
+            catalog,
+            auctionAddress: catalog.protocol.auctionAddress,
+            auction: snapshot.auction,
+            bidderStates,
+            complianceRecords,
+            minIncrement: 0n,
+            paymentSymbol: "USDC",
+            assetSymbol: "RWA",
+          } satisfies AuctionRuntimeState,
+        ]);
+      } catch {
+        continue;
+      }
+    }
+
+    const nextRpcState = Object.fromEntries(nextEntries);
 
     startTransition(() => {
       setRpcState(nextRpcState);
@@ -486,7 +490,7 @@ export function ValoremAppProvider({
         instructions,
       });
     },
-    [activeAddress, connectedWallet, connection, walletMode],
+    [activeAddress, connectedWallet, connection],
   );
 
   const authenticate = useCallback(async () => {
