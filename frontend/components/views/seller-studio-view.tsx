@@ -60,6 +60,7 @@ export function SellerStudioView({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
+  const shouldShowFeedback = Boolean(feedback.message && feedback.message !== localMessage);
 
   const sessionMatchesWallet =
     authSession && activeAddress ? authSession.walletAddress === activeAddress : false;
@@ -174,7 +175,11 @@ export function SellerStudioView({
       router.refresh();
     } catch (error) {
       setLocalMessage(
-        error instanceof Error ? error.message : "Unable to create the lot.",
+        error instanceof Error
+          ? error.message
+          : typeof error === "string"
+            ? error
+            : "Unable to create the lot.",
       );
     } finally {
       setIsSubmitting(false);
@@ -305,11 +310,13 @@ export function SellerStudioView({
           </form>
 
           {localMessage ? (
-            <p className="text-sm leading-6 text-muted">{localMessage}</p>
+            <p className="break-words whitespace-pre-wrap text-sm leading-6 text-muted">
+              {localMessage}
+            </p>
           ) : null}
-          {feedback.message ? (
+          {shouldShowFeedback ? (
             <p
-              className={`text-sm leading-6 ${
+              className={`break-words whitespace-pre-wrap text-sm leading-6 ${
                 feedback.status === "error" ? "text-alert" : "text-muted"
               }`}
             >
@@ -353,4 +360,3 @@ export function SellerStudioView({
     </div>
   );
 }
-

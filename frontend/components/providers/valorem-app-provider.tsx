@@ -27,6 +27,7 @@ import {
 import {
   Connection,
   PublicKey,
+  SendTransactionError,
   SystemProgram,
   Transaction,
   type TransactionInstruction,
@@ -158,6 +159,91 @@ function getNextEligibleCandidateState(state: AuctionRuntimeState): PublicKey {
     new PublicKey(state.auctionAddress),
     nextCandidate.bidder,
   )[0];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function getTransactionLogs(error: unknown): string[] | undefined {
+  if (error instanceof SendTransactionError) {
+    return error.logs;
+  }
+
+  if (!isRecord(error)) {
+    return undefined;
+  }
+
+  if (isStringArray(error.logs)) {
+    return error.logs;
+  }
+
+  if (isRecord(error.transactionError) && isStringArray(error.transactionError.logs)) {
+    return error.transactionError.logs;
+  }
+
+  return undefined;
+}
+
+function getTransactionErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof SendTransactionError) {
+    return error.transactionError.message;
+  }
+
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
+  }
+
+  if (isRecord(error) && typeof error.message === "string" && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
+function summarizeTransactionLogs(logs: string[]) {
+  const normalizedLogs = logs.map((line) => line.trim()).filter(Boolean);
+  if (normalizedLogs.length === 0) {
+    return "";
+  }
+
+  const relevantLines = normalizedLogs.filter((line) =>
+    /custom program error|Program log:|failed:|error:|panicked/i.test(line),
+  );
+  const summaryLines = (relevantLines.length > 0 ? relevantLines : normalizedLogs).slice(-3);
+  return Array.from(new Set(summaryLines)).join("\n");
+}
+
+async function formatWalletTransactionError(
+  error: unknown,
+  connection: Connection,
+  fallback: string,
+) {
+  const baseMessage = getTransactionErrorMessage(error, fallback);
+  let logs = getTransactionLogs(error);
+
+  if ((!logs || logs.length === 0) && error instanceof SendTransactionError) {
+    try {
+      logs = await error.getLogs(connection);
+    } catch {
+      logs = undefined;
+    }
+  }
+
+  const logSummary = logs ? summarizeTransactionLogs(logs) : "";
+  if (logSummary && !baseMessage.includes(logSummary)) {
+    return `${baseMessage}\n${logSummary}`;
+  }
+
+  return baseMessage;
 }
 
 async function sendWalletTransaction(params: {
@@ -638,14 +724,20 @@ export function ValoremAppProvider({
           contractAddress: auction.toBase58(),
         };
       } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Unable to initialize the on-chain auction.";
+        console.error("Transaction failed:", error);
+        const message = await formatWalletTransactionError(
+          error,
+          connection,
+          "Unable to initialize the on-chain auction.",
+        );
         setFeedback({
           status: "error",
           message,
         });
+        if (error instanceof Error) {
+          error.message = message;
+          throw error;
+        }
         throw new Error(message);
       }
     },
