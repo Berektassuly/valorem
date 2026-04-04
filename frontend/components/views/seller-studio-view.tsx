@@ -119,7 +119,6 @@ export function SellerStudioView({
       setLocalMessage("Validating on-chain auction configuration...");
       await validateAuctionInitialization({
         reviewerAddress: marketplaceProtocolDefaults.reviewerAddress,
-        assetMintAddress: marketplaceProtocolDefaults.assetMint,
         paymentMintAddress: marketplaceProtocolDefaults.paymentMint,
         auctionSeed,
         depositAmount: marketplaceProtocolDefaults.depositAmount,
@@ -157,7 +156,6 @@ export function SellerStudioView({
 
       const onChainAuction = await initializeAuction({
         reviewerAddress: marketplaceProtocolDefaults.reviewerAddress,
-        assetMintAddress: marketplaceProtocolDefaults.assetMint,
         paymentMintAddress: marketplaceProtocolDefaults.paymentMint,
         auctionSeed,
         depositAmount: marketplaceProtocolDefaults.depositAmount,
@@ -354,12 +352,12 @@ export function SellerStudioView({
             <SectionHeading
               eyebrow="Protocol preset"
               title="On-chain defaults"
-              description="The MVP keeps the seller-facing form lean by sourcing protocol parameters from shared defaults."
+              description="The MVP sources protocol parameters from shared defaults. Each lot receives its own Token-2022 asset mint created at initialization time."
             />
             <div className="space-y-3">
               {[
                 `Reviewer / ${formatWalletAddress(marketplaceProtocolDefaults.reviewerAddress)}`,
-                `Asset mint / ${formatWalletAddress(marketplaceProtocolDefaults.assetMint)}`,
+                `Asset mint / Generated per lot`,
                 `Payment mint / ${formatWalletAddress(marketplaceProtocolDefaults.paymentMint)}`,
                 `Max bidders / ${marketplaceProtocolDefaults.maxBidders}`,
               ].map((item) => (
@@ -368,6 +366,15 @@ export function SellerStudioView({
                 </div>
               ))}
             </div>
+          </Panel>
+
+          <Panel tone="dark" className="space-y-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/70">
+              Asset lifecycle
+            </p>
+            <p className="text-sm leading-6 text-white/80">
+              A fresh Token-2022 mint is created, supply is minted to the issuer, and the asset is deposited into the auction vault — all in a single wallet confirmation.
+            </p>
           </Panel>
 
           <Panel tone="dark" className="space-y-3">

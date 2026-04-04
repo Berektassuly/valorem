@@ -55,7 +55,24 @@ const publicEnvSchema = z
       .enum(["devnet", "mainnet-beta"])
       .default("devnet"),
     NEXT_PUBLIC_VALOREM_DEFAULT_REVIEWER: publicKeySchema,
-    NEXT_PUBLIC_VALOREM_DEFAULT_ASSET_MINT: publicKeySchema,
+    NEXT_PUBLIC_VALOREM_DEFAULT_ASSET_MINT: z
+      .string()
+      .trim()
+      .default("")
+      .superRefine((value, ctx) => {
+        if (!value) {
+          return;
+        }
+
+        try {
+          new PublicKey(value);
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "must be a valid base58 Solana public key.",
+          });
+        }
+      }),
     NEXT_PUBLIC_VALOREM_DEFAULT_PAYMENT_MINT: publicKeySchema,
     NEXT_PUBLIC_VALOREM_DEFAULT_DEPOSIT_AMOUNT: z.coerce.bigint().positive().default(250_000_000n),
     NEXT_PUBLIC_VALOREM_DEFAULT_RESERVE_PRICE: z.coerce.bigint().positive().default(2_500_000_000n),

@@ -17,7 +17,6 @@ export const marketplaceProtocolDefaults = {
 export function hasMarketplaceProtocolDefaults() {
   return Boolean(
     marketplaceProtocolDefaults.reviewerAddress &&
-      marketplaceProtocolDefaults.assetMint &&
       marketplaceProtocolDefaults.paymentMint,
   );
 }

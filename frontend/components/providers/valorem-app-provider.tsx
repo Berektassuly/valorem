@@ -27,6 +27,7 @@ import {
 } from "@solana/wallet-standard-features";
 import {
   Connection,
+  Keypair,
   PublicKey,
   SendTransactionError,
   SystemProgram,
@@ -44,6 +45,7 @@ import {
   buildCloseRevealInstruction,
   decodeBidderStateAccount,
   decodeComplianceRecordAccount,
+  buildDepositAssetInstruction,
   buildInitializeAuctionInstruction,
   buildRecordComplianceInstruction,
   buildRevealBidInstruction,
@@ -53,6 +55,7 @@ import {
   buildSubmitCommitmentInstruction,
   buildWithdrawProceedsInstruction,
   createRevealSecret,
+  deriveAuctionVaultAddress,
   deriveBidderStatePda,
   deriveComplianceRecordPda,
   type BidderStateAccount,
@@ -72,6 +75,7 @@ import {
   resolveAuctionInitializationAccounts,
   resolveMintAccountMetadata,
 } from "@/lib/protocol/auction-init";
+import { buildPerLotAssetMintInstructions } from "@/lib/protocol/mint-factory";
 import { getWalletAuctionState } from "@/lib/protocol/runtime-state";
 import { loadRevealSecret, saveRevealSecret } from "@/lib/protocol/secrets";
 import type {
@@ -122,7 +126,8 @@ type ValoremAppContextValue = {
 
 type InitializeAuctionParams = {
   reviewerAddress: string;
-  assetMintAddress: string;
+  /** Optional. When omitted a fresh per-lot Token-2022 mint is created. */
+  assetMintAddress?: string;
   paymentMintAddress: string;
   auctionSeed: Uint8Array;
   depositAmount: bigint;
@@ -289,31 +294,43 @@ async function sendWalletTransaction(params: {
   accountAddress: string;
   connection: Connection;
   instructions: TransactionInstruction[];
+  /** Keypairs that must sign in addition to the wallet (e.g. new mint accounts). */
+  partialSigners?: Keypair[];
 }) {
   const transaction = new Transaction().add(...params.instructions);
   transaction.feePayer = new PublicKey(params.accountAddress);
 
-  const simulation = await params.connection.simulateTransaction(transaction);
-  if (simulation.value.err) {
-    const simulationError =
-      typeof simulation.value.err === "string"
-        ? simulation.value.err
-        : JSON.stringify(simulation.value.err);
-    const logSummary = simulation.value.logs
-      ? summarizeTransactionLogs(simulation.value.logs)
-      : "";
+  // Simulation cannot include non-wallet signers, so skip when partial signers
+  // are present. The wallet or RPC will still run preflight checks.
+  if (!params.partialSigners || params.partialSigners.length === 0) {
+    const simulation = await params.connection.simulateTransaction(transaction);
+    if (simulation.value.err) {
+      const simulationError =
+        typeof simulation.value.err === "string"
+          ? simulation.value.err
+          : JSON.stringify(simulation.value.err);
+      const logSummary = simulation.value.logs
+        ? summarizeTransactionLogs(simulation.value.logs)
+        : "";
 
-    throw new Error(
-      logSummary
-        ? `Transaction simulation failed before wallet confirmation.\n${logSummary}`
-        : `Transaction simulation failed before wallet confirmation.\n${simulationError}`,
-    );
+      throw new Error(
+        logSummary
+          ? `Transaction simulation failed before wallet confirmation.\n${logSummary}`
+          : `Transaction simulation failed before wallet confirmation.\n${simulationError}`,
+      );
+    }
   }
 
   const { blockhash, lastValidBlockHeight } = await params.connection.getLatestBlockhash(
     "confirmed",
   );
   transaction.recentBlockhash = blockhash;
+
+  // Partially sign with any extra keypairs (e.g. a freshly generated mint).
+  if (params.partialSigners && params.partialSigners.length > 0) {
+    transaction.partialSign(...params.partialSigners);
+  }
+
   const account = params.wallet.accounts.find(
     (walletAccount) => walletAccount.address === params.accountAddress,
   );
@@ -969,11 +986,33 @@ export function ValoremAppProvider({
         throw new Error("Connect a wallet before creating an auction.");
       }
 
+      const issuer = new PublicKey(activeAddress);
+      const partialSigners: Keypair[] = [];
+      const mintPreInstructions: TransactionInstruction[] = [];
+      let effectiveAssetMintAddress: string;
+      let issuerAssetAccount: PublicKey | undefined;
+
+      // When no asset mint is provided, create a fresh per-lot Token-2022 mint.
+      if (!params.assetMintAddress) {
+        const mintResult = await buildPerLotAssetMintInstructions({
+          connection,
+          issuer,
+          assetAmount: params.assetAmount,
+        });
+
+        partialSigners.push(mintResult.mintKeypair);
+        mintPreInstructions.push(...mintResult.instructions);
+        effectiveAssetMintAddress = mintResult.mintKeypair.publicKey.toBase58();
+        issuerAssetAccount = mintResult.issuerAssetAccount;
+      } else {
+        effectiveAssetMintAddress = params.assetMintAddress;
+      }
+
       const resolved = await resolveAuctionInitializationAccounts({
         connection,
         cluster: protocolCluster,
         issuerAddress: activeAddress,
-        assetMintAddress: params.assetMintAddress,
+        assetMintAddress: effectiveAssetMintAddress,
         paymentMintAddress: params.paymentMintAddress,
         auctionSeed: params.auctionSeed,
       });
@@ -981,29 +1020,68 @@ export function ValoremAppProvider({
       const biddingEndAt = now + params.biddingWindowSeconds;
       const revealEndAt = biddingEndAt + params.revealWindowSeconds;
 
+      const initInstruction = buildInitializeAuctionInstruction({
+        issuer: resolved.issuer,
+        reviewer: new PublicKey(params.reviewerAddress),
+        assetMint: resolved.assetMint,
+        paymentMint: resolved.paymentMint,
+        issuerPaymentDestination: resolved.issuerPaymentDestination,
+        assetTokenProgram: resolved.assetTokenProgram,
+        paymentTokenProgram: resolved.paymentTokenProgram,
+        args: {
+          auctionSeed: params.auctionSeed,
+          depositAmount: params.depositAmount,
+          reservePrice: params.reservePrice,
+          assetAmount: params.assetAmount,
+          biddingEndAt: BigInt(biddingEndAt),
+          revealEndAt: BigInt(revealEndAt),
+          settlementWindow: BigInt(params.settlementWindowSeconds),
+          maxBidders: params.maxBidders,
+        },
+      });
+
+      // Derive the asset vault (ATA of the auction PDA) and build the deposit
+      // instruction so the lot is immediately ready for bidding.
+      const assetVault = deriveAuctionVaultAddress(
+        resolved.assetMint,
+        resolved.auction,
+        resolved.assetTokenProgram,
+      );
+
+      // The issuer asset account defaults to the ATA derived in per-lot mint
+      // creation, or must be resolved for a pre-existing mint.
+      const resolvedIssuerAssetAccount =
+        issuerAssetAccount ??
+        (await resolveAssociatedTokenAccount({
+          connection,
+          owner: issuer,
+          mint: {
+            publicKey: resolved.assetMint,
+            tokenProgram: resolved.assetTokenProgram,
+            tokenProgramLabel: "Token-2022",
+          },
+          ownerLabel: "issuer",
+          accountLabel: "Issuer asset account",
+          createIfMissing: false,
+        })).address;
+
+      const depositInstruction = buildDepositAssetInstruction({
+        issuer: resolved.issuer,
+        assetMint: resolved.assetMint,
+        auction: resolved.auction,
+        assetVault,
+        issuerAssetAccount: resolvedIssuerAssetAccount,
+        assetTokenProgram: resolved.assetTokenProgram,
+      });
+
       return {
         auction: resolved.auction,
+        partialSigners,
         instructions: [
+          ...mintPreInstructions,
           ...resolved.preInstructions,
-          buildInitializeAuctionInstruction({
-            issuer: resolved.issuer,
-            reviewer: new PublicKey(params.reviewerAddress),
-            assetMint: resolved.assetMint,
-            paymentMint: resolved.paymentMint,
-            issuerPaymentDestination: resolved.issuerPaymentDestination,
-            assetTokenProgram: resolved.assetTokenProgram,
-            paymentTokenProgram: resolved.paymentTokenProgram,
-            args: {
-              auctionSeed: params.auctionSeed,
-              depositAmount: params.depositAmount,
-              reservePrice: params.reservePrice,
-              assetAmount: params.assetAmount,
-              biddingEndAt: BigInt(biddingEndAt),
-              revealEndAt: BigInt(revealEndAt),
-              settlementWindow: BigInt(params.settlementWindowSeconds),
-              maxBidders: params.maxBidders,
-            },
-          }),
+          initInstruction,
+          depositInstruction,
         ],
       };
     },
@@ -1014,6 +1092,20 @@ export function ValoremAppProvider({
     async (params: InitializeAuctionParams) => {
       if (!activeAddress) {
         throw new Error("Connect a wallet before creating an auction.");
+      }
+
+      // Per-lot mint flow generates a fresh Keypair, so simulation would fail
+      // because the mint account doesn't exist yet. Only simulate when using a
+      // pre-existing asset mint.
+      if (!params.assetMintAddress) {
+        // Validate mint/payment configuration without full simulation.
+        await resolveMintAccountMetadata({
+          connection,
+          cluster: protocolCluster,
+          mintAddress: params.paymentMintAddress,
+          label: "payment mint",
+        });
+        return;
       }
 
       const prepared = await prepareAuctionInitialization(params);
@@ -1053,11 +1145,12 @@ export function ValoremAppProvider({
           accountAddress: activeAddress,
           connection,
           instructions: prepared.instructions,
+          partialSigners: prepared.partialSigners,
         });
 
         setFeedback({
           status: "success",
-          message: "Auction initialized on Solana.",
+          message: "Auction initialized and asset deposited on Solana.",
           signature,
         });
 

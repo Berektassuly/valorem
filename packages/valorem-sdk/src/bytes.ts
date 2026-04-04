@@ -87,19 +87,23 @@ export class ByteReader {
   }
 
   readU16(): number {
-    return new DataView(this.readBytes(2).buffer).getUint16(0, true);
+    const bytes = this.readBytes(2);
+    return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(0, true);
   }
 
   readU32(): number {
-    return new DataView(this.readBytes(4).buffer).getUint32(0, true);
+    const bytes = this.readBytes(4);
+    return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, true);
   }
 
   readU64(): bigint {
-    return new DataView(this.readBytes(8).buffer).getBigUint64(0, true);
+    const bytes = this.readBytes(8);
+    return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getBigUint64(0, true);
   }
 
   readI64(): bigint {
-    return new DataView(this.readBytes(8).buffer).getBigInt64(0, true);
+    const bytes = this.readBytes(8);
+    return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getBigInt64(0, true);
   }
 
   readPubkey(): PublicKey {
