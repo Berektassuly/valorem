@@ -8,25 +8,39 @@ use crate::{
 };
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, TransferChecked};
-use spl_transfer_hook_interface::{get_extra_account_metas_address, solana_pubkey::Pubkey as InterfacePubkey};
+use spl_transfer_hook_interface::{
+    get_extra_account_metas_address, solana_pubkey::Pubkey as InterfacePubkey,
+};
 use valorem_transfer_hook;
 
 fn to_interface_pubkey(pubkey: &Pubkey) -> InterfacePubkey {
     InterfacePubkey::new_from_array(pubkey.to_bytes())
 }
 
-pub fn initialize_auction(ctx: Context<InitializeAuction>, args: InitializeAuctionArgs) -> Result<()> {
+pub fn initialize_auction(
+    ctx: Context<InitializeAuction>,
+    args: InitializeAuctionArgs,
+) -> Result<()> {
     require!(args.deposit_amount > 0, AuctionError::InvalidDepositAmount);
     require!(args.asset_amount > 0, AuctionError::InvalidAssetAmount);
-    require!(args.bidding_end_at < args.reveal_end_at, AuctionError::InvalidAuctionWindow);
-    require!(args.settlement_window > 0, AuctionError::InvalidSettlementWindow);
+    require!(
+        args.bidding_end_at < args.reveal_end_at,
+        AuctionError::InvalidAuctionWindow
+    );
+    require!(
+        args.settlement_window > 0,
+        AuctionError::InvalidSettlementWindow
+    );
     require!(
         args.max_bidders > 0 && args.max_bidders as usize <= crate::state::MAX_RANKED_BIDDERS,
         AuctionError::InvalidMaxBidders
     );
 
     let hook_config_address = Pubkey::find_program_address(
-        &[crate::state::HOOK_CONFIG_SEED, ctx.accounts.asset_mint.key().as_ref()],
+        &[
+            crate::state::HOOK_CONFIG_SEED,
+            ctx.accounts.asset_mint.key().as_ref(),
+        ],
         &valorem_transfer_hook::ID,
     )
     .0;
@@ -88,7 +102,10 @@ pub fn initialize_auction(ctx: Context<InitializeAuction>, args: InitializeAucti
         system_program: ctx.accounts.system_program.to_account_info(),
     };
     valorem_transfer_hook::cpi::initialize_hook(
-        CpiContext::new(ctx.accounts.transfer_hook_program.to_account_info(), cpi_accounts),
+        CpiContext::new(
+            ctx.accounts.transfer_hook_program.to_account_info(),
+            cpi_accounts,
+        ),
         ctx.accounts.auction.key(),
     )?;
     Ok(())
@@ -96,13 +113,23 @@ pub fn initialize_auction(ctx: Context<InitializeAuction>, args: InitializeAucti
 
 pub fn deposit_asset(ctx: Context<DepositAsset>) -> Result<()> {
     let auction = &mut ctx.accounts.auction;
-    require_keys_eq!(auction.issuer, ctx.accounts.issuer.key(), AuctionError::Unauthorized);
-    require!(auction.phase == AuctionPhase::Bidding, AuctionError::InvalidPhase);
-    require!(!auction.asset_deposited, AuctionError::AssetAlreadyDeposited);
+    require_keys_eq!(
+        auction.issuer,
+        ctx.accounts.issuer.key(),
+        AuctionError::Unauthorized
+    );
+    require!(
+        auction.phase == AuctionPhase::Bidding,
+        AuctionError::InvalidPhase
+    );
+    require!(
+        !auction.asset_deposited,
+        AuctionError::AssetAlreadyDeposited
+    );
 
     token_interface::transfer_checked(
         CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.asset_token_program.to_account_info(),
             TransferChecked {
                 from: ctx.accounts.issuer_asset_account.to_account_info(),
                 mint: ctx.accounts.asset_mint.to_account_info(),
@@ -120,13 +147,19 @@ pub fn deposit_asset(ctx: Context<DepositAsset>) -> Result<()> {
 pub fn submit_commitment(ctx: Context<SubmitCommitment>, commitment: [u8; 32]) -> Result<()> {
     let auction = &mut ctx.accounts.auction;
     let now = Clock::get()?.unix_timestamp;
-    require!(auction.phase == AuctionPhase::Bidding, AuctionError::InvalidPhase);
+    require!(
+        auction.phase == AuctionPhase::Bidding,
+        AuctionError::InvalidPhase
+    );
     require!(now <= auction.bidding_end_at, AuctionError::BiddingClosed);
-    require!(auction.registered_bidders < auction.max_bidders, AuctionError::BidderCapReached);
+    require!(
+        auction.registered_bidders < auction.max_bidders,
+        AuctionError::BidderCapReached
+    );
 
     token_interface::transfer_checked(
         CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.payment_token_program.to_account_info(),
             TransferChecked {
                 from: ctx.accounts.bidder_payment_account.to_account_info(),
                 mint: ctx.accounts.payment_mint.to_account_info(),
@@ -170,8 +203,14 @@ pub fn submit_commitment(ctx: Context<SubmitCommitment>, commitment: [u8; 32]) -
 pub fn advance_to_reveal(ctx: Context<AdvanceAuctionPhase>) -> Result<()> {
     let auction = &mut ctx.accounts.auction;
     require_admin(auction, ctx.accounts.admin.key())?;
-    require!(auction.phase == AuctionPhase::Bidding, AuctionError::InvalidPhase);
-    require!(Clock::get()?.unix_timestamp >= auction.bidding_end_at, AuctionError::BiddingStillOpen);
+    require!(
+        auction.phase == AuctionPhase::Bidding,
+        AuctionError::InvalidPhase
+    );
+    require!(
+        Clock::get()?.unix_timestamp >= auction.bidding_end_at,
+        AuctionError::BiddingStillOpen
+    );
     auction.phase = AuctionPhase::Reveal;
     Ok(())
 }
@@ -180,13 +219,22 @@ pub fn reveal_bid(ctx: Context<RevealBid>, bid_amount: u64, salt: [u8; 32]) -> R
     let auction = &mut ctx.accounts.auction;
     let bidder_state = &mut ctx.accounts.bidder_state;
     let now = Clock::get()?.unix_timestamp;
-    require!(auction.phase == AuctionPhase::Reveal, AuctionError::InvalidPhase);
+    require!(
+        auction.phase == AuctionPhase::Reveal,
+        AuctionError::InvalidPhase
+    );
     require!(now <= auction.reveal_end_at, AuctionError::RevealClosed);
     require!(!bidder_state.revealed, AuctionError::BidAlreadyRevealed);
-    require!(bid_amount >= auction.deposit_amount, AuctionError::BidAmountBelowDeposit);
+    require!(
+        bid_amount >= auction.deposit_amount,
+        AuctionError::BidAmountBelowDeposit
+    );
 
     let expected = build_commitment(auction.key(), ctx.accounts.bidder.key(), bid_amount, &salt);
-    require!(expected == bidder_state.commitment, AuctionError::RevealMismatch);
+    require!(
+        expected == bidder_state.commitment,
+        AuctionError::RevealMismatch
+    );
 
     bidder_state.bid_amount = bid_amount;
     bidder_state.reveal_timestamp = now;
@@ -205,8 +253,14 @@ pub fn reveal_bid(ctx: Context<RevealBid>, bid_amount: u64, salt: [u8; 32]) -> R
 pub fn close_reveal(ctx: Context<CloseReveal>) -> Result<()> {
     let auction = &mut ctx.accounts.auction;
     require_admin(auction, ctx.accounts.admin.key())?;
-    require!(auction.phase == AuctionPhase::Reveal, AuctionError::InvalidPhase);
-    require!(Clock::get()?.unix_timestamp >= auction.reveal_end_at, AuctionError::RevealStillOpen);
+    require!(
+        auction.phase == AuctionPhase::Reveal,
+        AuctionError::InvalidPhase
+    );
+    require!(
+        Clock::get()?.unix_timestamp >= auction.reveal_end_at,
+        AuctionError::RevealStillOpen
+    );
 
     if let Some(index) = auction.first_eligible_candidate_index() {
         auction.phase = AuctionPhase::Settlement;
@@ -220,7 +274,11 @@ pub fn close_reveal(ctx: Context<CloseReveal>) -> Result<()> {
             ctx.accounts.current_candidate_state.key(),
             AuctionError::CurrentCandidateAccountMismatch
         );
-        set_bidder_state_eligibility(&ctx.accounts.current_candidate_state, true, index as u16 + 1)?;
+        set_bidder_state_eligibility(
+            &ctx.accounts.current_candidate_state,
+            true,
+            index as u16 + 1,
+        )?;
     } else {
         auction.phase = AuctionPhase::Completed;
     }
@@ -245,7 +303,11 @@ pub fn record_compliance(
     compliance.bump = ctx.bumps.compliance_record;
 
     let bidder_state = &mut ctx.accounts.bidder_state;
-    require_keys_eq!(bidder_state.bidder, ctx.accounts.bidder.key(), AuctionError::BidderMismatch);
+    require_keys_eq!(
+        bidder_state.bidder,
+        ctx.accounts.bidder.key(),
+        AuctionError::BidderMismatch
+    );
     bidder_state.compliance_approved =
         status == ComplianceStatus::Approved && expires_at >= Clock::get()?.unix_timestamp;
     Ok(())
@@ -254,7 +316,8 @@ pub fn record_compliance(
 pub fn settle_candidate(ctx: Context<SettleCandidate>) -> Result<()> {
     let auction_info = ctx.accounts.auction.to_account_info();
     let transfer_hook_program_info = ctx.accounts.transfer_hook_program.to_account_info();
-    let token_program_info = ctx.accounts.token_program.to_account_info();
+    let asset_token_program_info = ctx.accounts.asset_token_program.to_account_info();
+    let payment_token_program_info = ctx.accounts.payment_token_program.to_account_info();
     let system_program_info = ctx.accounts.system_program.to_account_info();
     let asset_vault_info = ctx.accounts.asset_vault.to_account_info();
     let asset_mint_info = ctx.accounts.asset_mint.to_account_info();
@@ -269,13 +332,31 @@ pub fn settle_candidate(ctx: Context<SettleCandidate>) -> Result<()> {
     let auction = &mut ctx.accounts.auction;
     let bidder_state = &mut ctx.accounts.bidder_state;
     let now = Clock::get()?.unix_timestamp;
-    require!(auction.phase == AuctionPhase::Settlement, AuctionError::InvalidPhase);
-    require!(auction.has_active_candidate(&ctx.accounts.bidder.key()), AuctionError::NotActiveSettlementCandidate);
-    require!(now <= auction.active_settlement_started_at + auction.settlement_window, AuctionError::SettlementWindowElapsed);
+    require!(
+        auction.phase == AuctionPhase::Settlement,
+        AuctionError::InvalidPhase
+    );
+    require!(
+        auction.has_active_candidate(&ctx.accounts.bidder.key()),
+        AuctionError::NotActiveSettlementCandidate
+    );
+    require!(
+        now <= auction.active_settlement_started_at + auction.settlement_window,
+        AuctionError::SettlementWindowElapsed
+    );
     require!(bidder_state.revealed, AuctionError::BidNotRevealed);
-    require!(bidder_state.compliance_approved, AuctionError::ComplianceNotApproved);
-    require!(ctx.accounts.compliance_record.status == ComplianceStatus::Approved, AuctionError::ComplianceNotApproved);
-    require!(ctx.accounts.compliance_record.expires_at >= now, AuctionError::ComplianceExpired);
+    require!(
+        bidder_state.compliance_approved,
+        AuctionError::ComplianceNotApproved
+    );
+    require!(
+        ctx.accounts.compliance_record.status == ComplianceStatus::Approved,
+        AuctionError::ComplianceNotApproved
+    );
+    require!(
+        ctx.accounts.compliance_record.expires_at >= now,
+        AuctionError::ComplianceExpired
+    );
     require_keys_eq!(
         auction.transfer_hook_config,
         ctx.accounts.hook_config.key(),
@@ -294,7 +375,7 @@ pub fn settle_candidate(ctx: Context<SettleCandidate>) -> Result<()> {
     if remaining_payment > 0 {
         token_interface::transfer_checked(
             CpiContext::new(
-                token_program_info.clone(),
+                payment_token_program_info.clone(),
                 TransferChecked {
                     from: bidder_payment_info,
                     mint: payment_mint_info,
@@ -314,7 +395,9 @@ pub fn settle_candidate(ctx: Context<SettleCandidate>) -> Result<()> {
         auction.auction_seed.as_ref(),
         &bump,
     ];
-    let permit_expiry = now.checked_add(300).ok_or(AuctionError::ArithmeticOverflow)?;
+    let permit_expiry = now
+        .checked_add(300)
+        .ok_or(AuctionError::ArithmeticOverflow)?;
     let issue_permit_accounts = valorem_transfer_hook::cpi::accounts::IssuePermit {
         controller: auction_info.clone(),
         mint: asset_mint_info.clone(),
@@ -325,14 +408,18 @@ pub fn settle_candidate(ctx: Context<SettleCandidate>) -> Result<()> {
         system_program: system_program_info,
     };
     valorem_transfer_hook::cpi::issue_permit(
-        CpiContext::new_with_signer(transfer_hook_program_info, issue_permit_accounts, &[signer_seeds]),
+        CpiContext::new_with_signer(
+            transfer_hook_program_info,
+            issue_permit_accounts,
+            &[signer_seeds],
+        ),
         auction.asset_amount,
         permit_expiry,
     )?;
 
     token_interface::transfer_checked(
         CpiContext::new_with_signer(
-            token_program_info,
+            asset_token_program_info,
             TransferChecked {
                 from: asset_vault_info,
                 mint: asset_mint_info,
@@ -368,9 +455,18 @@ pub fn settle_candidate(ctx: Context<SettleCandidate>) -> Result<()> {
 
 pub fn slash_unrevealed(ctx: Context<SlashUnrevealed>) -> Result<()> {
     require_admin(&ctx.accounts.auction, ctx.accounts.admin.key())?;
-    require!(Clock::get()?.unix_timestamp >= ctx.accounts.auction.reveal_end_at, AuctionError::RevealStillOpen);
-    require!(!ctx.accounts.bidder_state.revealed, AuctionError::BidAlreadyRevealed);
-    require!(ctx.accounts.bidder_state.deposit_paid, AuctionError::DepositNotPaid);
+    require!(
+        Clock::get()?.unix_timestamp >= ctx.accounts.auction.reveal_end_at,
+        AuctionError::RevealStillOpen
+    );
+    require!(
+        !ctx.accounts.bidder_state.revealed,
+        AuctionError::BidAlreadyRevealed
+    );
+    require!(
+        ctx.accounts.bidder_state.deposit_paid,
+        AuctionError::DepositNotPaid
+    );
     require!(
         !ctx.accounts.bidder_state.deposit_slashed && !ctx.accounts.bidder_state.deposit_refunded,
         AuctionError::DepositAlreadyResolved
@@ -398,15 +494,27 @@ pub fn slash_candidate_and_advance(
     let bidder_state = &mut ctx.accounts.current_bidder_state;
     let now = Clock::get()?.unix_timestamp;
     require_admin(auction, ctx.accounts.admin.key())?;
-    require!(auction.phase == AuctionPhase::Settlement, AuctionError::InvalidPhase);
-    require!(auction.has_active_candidate(&bidder_state.bidder), AuctionError::NotActiveSettlementCandidate);
+    require!(
+        auction.phase == AuctionPhase::Settlement,
+        AuctionError::InvalidPhase
+    );
+    require!(
+        auction.has_active_candidate(&bidder_state.bidder),
+        AuctionError::NotActiveSettlementCandidate
+    );
 
     match reason {
         SlashReason::MissedSettlementWindow => {
-            require!(now > auction.active_settlement_started_at + auction.settlement_window, AuctionError::SettlementWindowStillOpen);
+            require!(
+                now > auction.active_settlement_started_at + auction.settlement_window,
+                AuctionError::SettlementWindowStillOpen
+            );
         }
         SlashReason::RejectedCompliance => {
-            require!(ctx.accounts.compliance_record.status == ComplianceStatus::Rejected, AuctionError::ComplianceStillPending);
+            require!(
+                ctx.accounts.compliance_record.status == ComplianceStatus::Rejected,
+                AuctionError::ComplianceStillPending
+            );
         }
         SlashReason::ExpiredCompliance => {
             require!(
@@ -439,7 +547,11 @@ pub fn slash_candidate_and_advance(
             ctx.accounts.next_candidate_state.key(),
             AuctionError::NextCandidateAccountMismatch
         );
-        set_bidder_state_eligibility(&ctx.accounts.next_candidate_state, true, next_index as u16 + 1)?;
+        set_bidder_state_eligibility(
+            &ctx.accounts.next_candidate_state,
+            true,
+            next_index as u16 + 1,
+        )?;
     } else {
         auction.phase = AuctionPhase::Completed;
         auction.active_settlement_started_at = 0;
@@ -449,7 +561,7 @@ pub fn slash_candidate_and_advance(
 
 pub fn claim_refund(ctx: Context<ClaimRefund>) -> Result<()> {
     let auction_info = ctx.accounts.auction.to_account_info();
-    let token_program_info = ctx.accounts.token_program.to_account_info();
+    let token_program_info = ctx.accounts.payment_token_program.to_account_info();
     let payment_vault_info = ctx.accounts.payment_vault.to_account_info();
     let payment_mint_info = ctx.accounts.payment_mint.to_account_info();
     let bidder_payment_info = ctx.accounts.bidder_payment_account.to_account_info();
@@ -461,7 +573,8 @@ pub fn claim_refund(ctx: Context<ClaimRefund>) -> Result<()> {
         AuctionError::DepositAlreadyResolved
     );
     require!(
-        auction.phase == AuctionPhase::Completed || !auction.bidder_is_still_eligible(&bidder_state.bidder),
+        auction.phase == AuctionPhase::Completed
+            || !auction.bidder_is_still_eligible(&bidder_state.bidder),
         AuctionError::BidderStillEligibleForSettlement
     );
 
@@ -497,14 +610,20 @@ pub fn claim_refund(ctx: Context<ClaimRefund>) -> Result<()> {
 
 pub fn reclaim_unsold_asset(ctx: Context<ReclaimUnsoldAsset>) -> Result<()> {
     let auction_info = ctx.accounts.auction.to_account_info();
-    let token_program_info = ctx.accounts.token_program.to_account_info();
+    let token_program_info = ctx.accounts.asset_token_program.to_account_info();
     let asset_vault_info = ctx.accounts.asset_vault.to_account_info();
     let asset_mint_info = ctx.accounts.asset_mint.to_account_info();
     let issuer_asset_info = ctx.accounts.issuer_asset_account.to_account_info();
     let auction = &mut ctx.accounts.auction;
     require_admin(auction, ctx.accounts.admin.key())?;
-    require!(auction.phase == AuctionPhase::Completed, AuctionError::InvalidPhase);
-    require!(!auction.has_settled_bidder, AuctionError::AuctionAlreadySettled);
+    require!(
+        auction.phase == AuctionPhase::Completed,
+        AuctionError::InvalidPhase
+    );
+    require!(
+        !auction.has_settled_bidder,
+        AuctionError::AuctionAlreadySettled
+    );
     require!(auction.asset_deposited, AuctionError::AssetNotDeposited);
 
     let bump = [auction.bump];
@@ -534,17 +653,29 @@ pub fn reclaim_unsold_asset(ctx: Context<ReclaimUnsoldAsset>) -> Result<()> {
 
 pub fn withdraw_proceeds(ctx: Context<WithdrawProceeds>, amount: u64) -> Result<()> {
     let auction_info = ctx.accounts.auction.to_account_info();
-    let token_program_info = ctx.accounts.token_program.to_account_info();
+    let token_program_info = ctx.accounts.payment_token_program.to_account_info();
     let payment_vault_info = ctx.accounts.payment_vault.to_account_info();
     let payment_mint_info = ctx.accounts.payment_mint.to_account_info();
     let issuer_destination_info = ctx.accounts.issuer_payment_destination.to_account_info();
     let auction = &mut ctx.accounts.auction;
-    require_keys_eq!(auction.issuer, ctx.accounts.issuer.key(), AuctionError::Unauthorized);
-    require!(auction.phase == AuctionPhase::Completed, AuctionError::InvalidPhase);
+    require_keys_eq!(
+        auction.issuer,
+        ctx.accounts.issuer.key(),
+        AuctionError::Unauthorized
+    );
+    require!(
+        auction.phase == AuctionPhase::Completed,
+        AuctionError::InvalidPhase
+    );
 
-    let available = auction.available_proceeds().ok_or(AuctionError::ArithmeticOverflow)?;
+    let available = auction
+        .available_proceeds()
+        .ok_or(AuctionError::ArithmeticOverflow)?;
     let withdrawal_amount = if amount == 0 { available } else { amount };
-    require!(withdrawal_amount <= available, AuctionError::InsufficientWithdrawableProceeds);
+    require!(
+        withdrawal_amount <= available,
+        AuctionError::InsufficientWithdrawableProceeds
+    );
 
     let bump = [auction.bump];
     let signer_seeds: &[&[u8]] = &[

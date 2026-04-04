@@ -52,6 +52,10 @@ pub enum AuctionError {
     PaymentMintMismatch,
     #[msg("Asset mint mismatch.")]
     AssetMintMismatch,
+    #[msg("Payment token program mismatch.")]
+    PaymentTokenProgramMismatch,
+    #[msg("Asset token program mismatch.")]
+    AssetTokenProgramMismatch,
     #[msg("Bid amount must exceed deposit.")]
     BidAmountBelowDeposit,
     #[msg("Current candidate account mismatch.")]

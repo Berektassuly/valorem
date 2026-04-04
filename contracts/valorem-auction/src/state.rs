@@ -205,7 +205,10 @@ impl Auction {
 
 impl BidderState {
     pub fn pda(auction: &Pubkey, bidder: &Pubkey) -> (Pubkey, u8) {
-        Pubkey::find_program_address(&[BIDDER_SEED, auction.as_ref(), bidder.as_ref()], &crate::ID)
+        Pubkey::find_program_address(
+            &[BIDDER_SEED, auction.as_ref(), bidder.as_ref()],
+            &crate::ID,
+        )
     }
 }
 
@@ -233,7 +236,8 @@ pub fn build_commitment(
 }
 
 pub fn compare_ranked_bids(left: &RankedBid, right: &RankedBid) -> std::cmp::Ordering {
-    right.amount
+    right
+        .amount
         .cmp(&left.amount)
         .then_with(|| left.reveal_timestamp.cmp(&right.reveal_timestamp))
         .then_with(|| left.bidder.to_bytes().cmp(&right.bidder.to_bytes()))

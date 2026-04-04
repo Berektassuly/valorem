@@ -5,9 +5,7 @@ use anchor_lang::{
 use anchor_spl::token_interface::{Mint, TokenAccount};
 use spl_discriminator::SplDiscriminate;
 use spl_tlv_account_resolution::{
-    account::ExtraAccountMeta,
-    seeds::Seed,
-    state::ExtraAccountMetaList,
+    account::ExtraAccountMeta, seeds::Seed, state::ExtraAccountMetaList,
 };
 use spl_transfer_hook_interface::{
     collect_extra_account_metas_signer_seeds, get_extra_account_metas_address,
@@ -34,7 +32,10 @@ pub mod valorem_transfer_hook {
     use super::*;
 
     pub fn initialize_hook(ctx: Context<InitializeHook>, controller: Pubkey) -> Result<()> {
-        require!(controller != Pubkey::default(), HookError::InvalidController);
+        require!(
+            controller != Pubkey::default(),
+            HookError::InvalidController
+        );
 
         let mint_key = ctx.accounts.mint.key();
         let interface_mint = to_interface_pubkey(&mint_key);
@@ -99,11 +100,7 @@ pub mod valorem_transfer_hook {
         Ok(())
     }
 
-    pub fn issue_permit(
-        ctx: Context<IssuePermit>,
-        amount: u64,
-        expires_at: i64,
-    ) -> Result<()> {
+    pub fn issue_permit(ctx: Context<IssuePermit>, amount: u64, expires_at: i64) -> Result<()> {
         require!(amount > 0, HookError::InvalidPermitAmount);
         require!(
             expires_at > Clock::get()?.unix_timestamp,

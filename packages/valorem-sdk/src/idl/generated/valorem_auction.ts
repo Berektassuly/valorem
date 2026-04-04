@@ -100,7 +100,7 @@ export type ValoremAuction = {
           "writable": true
         },
         {
-          "name": "tokenProgram"
+          "name": "paymentTokenProgram"
         }
       ],
       "args": []
@@ -173,7 +173,7 @@ export type ValoremAuction = {
           "writable": true
         },
         {
-          "name": "tokenProgram"
+          "name": "assetTokenProgram"
         }
       ],
       "args": []
@@ -244,7 +244,7 @@ export type ValoremAuction = {
               },
               {
                 "kind": "account",
-                "path": "tokenProgram"
+                "path": "assetTokenProgram"
               },
               {
                 "kind": "account",
@@ -301,7 +301,7 @@ export type ValoremAuction = {
               },
               {
                 "kind": "account",
-                "path": "tokenProgram"
+                "path": "paymentTokenProgram"
               },
               {
                 "kind": "account",
@@ -363,7 +363,10 @@ export type ValoremAuction = {
           "address": "JCdjqNU5JEfuupjT6EAuBphhALhyiBRJy9E3fstwR1Yd"
         },
         {
-          "name": "tokenProgram"
+          "name": "assetTokenProgram"
+        },
+        {
+          "name": "paymentTokenProgram"
         },
         {
           "name": "associatedTokenProgram",
@@ -421,7 +424,7 @@ export type ValoremAuction = {
           "writable": true
         },
         {
-          "name": "tokenProgram"
+          "name": "assetTokenProgram"
         }
       ],
       "args": []
@@ -847,7 +850,10 @@ export type ValoremAuction = {
           "address": "JCdjqNU5JEfuupjT6EAuBphhALhyiBRJy9E3fstwR1Yd"
         },
         {
-          "name": "tokenProgram"
+          "name": "assetTokenProgram"
+        },
+        {
+          "name": "paymentTokenProgram"
         },
         {
           "name": "systemProgram",
@@ -1020,7 +1026,7 @@ export type ValoremAuction = {
           "writable": true
         },
         {
-          "name": "tokenProgram"
+          "name": "paymentTokenProgram"
         },
         {
           "name": "systemProgram",
@@ -1079,7 +1085,7 @@ export type ValoremAuction = {
           "writable": true
         },
         {
-          "name": "tokenProgram"
+          "name": "paymentTokenProgram"
         }
       ],
       "args": [
@@ -1285,66 +1291,76 @@ export type ValoremAuction = {
     },
     {
       "code": 6025,
+      "name": "paymentTokenProgramMismatch",
+      "msg": "Payment token program mismatch."
+    },
+    {
+      "code": 6026,
+      "name": "assetTokenProgramMismatch",
+      "msg": "Asset token program mismatch."
+    },
+    {
+      "code": 6027,
       "name": "bidAmountBelowDeposit",
       "msg": "Bid amount must exceed deposit."
     },
     {
-      "code": 6026,
+      "code": 6028,
       "name": "currentCandidateAccountMismatch",
       "msg": "Current candidate account mismatch."
     },
     {
-      "code": 6027,
+      "code": 6029,
       "name": "nextCandidateAccountMismatch",
       "msg": "Next candidate account mismatch."
     },
     {
-      "code": 6028,
+      "code": 6030,
       "name": "invalidHookConfigAccount",
       "msg": "Hook config PDA mismatch."
     },
     {
-      "code": 6029,
+      "code": 6031,
       "name": "invalidHookValidationAccount",
       "msg": "Hook validation PDA mismatch."
     },
     {
-      "code": 6030,
+      "code": 6032,
       "name": "invalidDepositAmount",
       "msg": "Deposit amount must be positive."
     },
     {
-      "code": 6031,
+      "code": 6033,
       "name": "invalidAssetAmount",
       "msg": "Asset amount must be positive."
     },
     {
-      "code": 6032,
+      "code": 6034,
       "name": "invalidAuctionWindow",
       "msg": "Auction windows are invalid."
     },
     {
-      "code": 6033,
+      "code": 6035,
       "name": "invalidSettlementWindow",
       "msg": "Settlement window must be positive."
     },
     {
-      "code": 6034,
+      "code": 6036,
       "name": "invalidMaxBidders",
       "msg": "max_bidders is out of range."
     },
     {
-      "code": 6035,
+      "code": 6037,
       "name": "bidderNotRanked",
       "msg": "Bidder not found in ranked ladder."
     },
     {
-      "code": 6036,
+      "code": 6038,
       "name": "bidderMismatch",
       "msg": "Bidder mismatch."
     },
     {
-      "code": 6037,
+      "code": 6039,
       "name": "insufficientWithdrawableProceeds",
       "msg": "Insufficient withdrawable proceeds."
     }

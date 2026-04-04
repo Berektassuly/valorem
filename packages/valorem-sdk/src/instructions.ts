@@ -92,6 +92,8 @@ export type InitializeAuctionInstructionParams = {
   hookConfig?: PublicKey;
   extraAccountMetaList?: PublicKey;
   transferHookProgram?: PublicKey;
+  assetTokenProgram?: PublicKey;
+  paymentTokenProgram?: PublicKey;
   tokenProgram?: PublicKey;
   associatedTokenProgram?: PublicKey;
   systemProgram?: PublicKey;
@@ -103,11 +105,16 @@ export function buildInitializeAuctionInstruction(
   const [auction] = params.auction
     ? [params.auction, 0]
     : deriveAuctionPda(params.issuer, params.args.auctionSeed);
-  const tokenProgram = params.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
+  const assetTokenProgram =
+    params.assetTokenProgram ?? params.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
+  const paymentTokenProgram =
+    params.paymentTokenProgram ?? params.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
   const assetVault =
-    params.assetVault ?? deriveAuctionVaultAddress(params.assetMint, auction, tokenProgram);
+    params.assetVault ??
+    deriveAuctionVaultAddress(params.assetMint, auction, assetTokenProgram);
   const paymentVault =
-    params.paymentVault ?? deriveAuctionVaultAddress(params.paymentMint, auction, tokenProgram);
+    params.paymentVault ??
+    deriveAuctionVaultAddress(params.paymentMint, auction, paymentTokenProgram);
   const hookConfig = params.hookConfig ?? deriveHookConfigPda(params.assetMint)[0];
   const extraAccountMetaList =
     params.extraAccountMetaList ?? deriveTransferHookValidationPda(params.assetMint)[0];
@@ -133,7 +140,8 @@ export function buildInitializeAuctionInstruction(
         isSigner: false,
         isWritable: false,
       },
-      { pubkey: tokenProgram, isSigner: false, isWritable: false },
+      { pubkey: assetTokenProgram, isSigner: false, isWritable: false },
+      { pubkey: paymentTokenProgram, isSigner: false, isWritable: false },
       {
         pubkey: params.associatedTokenProgram ?? ASSOCIATED_TOKEN_PROGRAM_ID,
         isSigner: false,
@@ -154,19 +162,19 @@ export function buildDepositAssetInstruction(params: {
   auction: PublicKey;
   assetVault: PublicKey;
   issuerAssetAccount: PublicKey;
+  assetTokenProgram?: PublicKey;
   tokenProgram?: PublicKey;
 }): TransactionInstruction {
+  const assetTokenProgram =
+    params.assetTokenProgram ?? params.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
+
   return createInstruction(withDiscriminator(AUCTION_DISCRIMINATORS.depositAsset), [
     { pubkey: params.issuer, isSigner: true, isWritable: true },
     { pubkey: params.assetMint, isSigner: false, isWritable: false },
     { pubkey: params.auction, isSigner: false, isWritable: true },
     { pubkey: params.assetVault, isSigner: false, isWritable: true },
     { pubkey: params.issuerAssetAccount, isSigner: false, isWritable: true },
-    {
-      pubkey: params.tokenProgram ?? TOKEN_2022_PROGRAM_ID,
-      isSigner: false,
-      isWritable: false,
-    },
+    { pubkey: assetTokenProgram, isSigner: false, isWritable: false },
   ]);
 }
 
@@ -178,10 +186,13 @@ export function buildSubmitCommitmentInstruction(params: {
   paymentVault: PublicKey;
   bidderPaymentAccount: PublicKey;
   bidderState?: PublicKey;
+  paymentTokenProgram?: PublicKey;
   tokenProgram?: PublicKey;
   systemProgram?: PublicKey;
 }): TransactionInstruction {
   const bidderState = params.bidderState ?? deriveBidderStatePda(params.auction, params.bidder)[0];
+  const paymentTokenProgram =
+    params.paymentTokenProgram ?? params.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
 
   return createInstruction(
     withDiscriminator(
@@ -195,11 +206,7 @@ export function buildSubmitCommitmentInstruction(params: {
       { pubkey: bidderState, isSigner: false, isWritable: true },
       { pubkey: params.paymentVault, isSigner: false, isWritable: true },
       { pubkey: params.bidderPaymentAccount, isSigner: false, isWritable: true },
-      {
-        pubkey: params.tokenProgram ?? TOKEN_2022_PROGRAM_ID,
-        isSigner: false,
-        isWritable: false,
-      },
+      { pubkey: paymentTokenProgram, isSigner: false, isWritable: false },
       {
         pubkey: params.systemProgram ?? SystemProgram.programId,
         isSigner: false,
@@ -300,6 +307,8 @@ export function buildSettleCandidateInstruction(params: {
   extraAccountMetaList?: PublicKey;
   transferPermit?: PublicKey;
   transferHookProgram?: PublicKey;
+  assetTokenProgram?: PublicKey;
+  paymentTokenProgram?: PublicKey;
   tokenProgram?: PublicKey;
   systemProgram?: PublicKey;
 }): TransactionInstruction {
@@ -314,6 +323,10 @@ export function buildSettleCandidateInstruction(params: {
   const transferPermit =
     params.transferPermit ??
     deriveTransferPermitPda(params.assetMint, params.assetVault, bidderAssetAccount)[0];
+  const assetTokenProgram =
+    params.assetTokenProgram ?? params.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
+  const paymentTokenProgram =
+    params.paymentTokenProgram ?? params.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
 
   return createInstruction(withDiscriminator(AUCTION_DISCRIMINATORS.settleCandidate), [
     { pubkey: params.bidder, isSigner: true, isWritable: true },
@@ -334,11 +347,8 @@ export function buildSettleCandidateInstruction(params: {
       isSigner: false,
       isWritable: false,
     },
-    {
-      pubkey: params.tokenProgram ?? TOKEN_2022_PROGRAM_ID,
-      isSigner: false,
-      isWritable: false,
-    },
+    { pubkey: assetTokenProgram, isSigner: false, isWritable: false },
+    { pubkey: paymentTokenProgram, isSigner: false, isWritable: false },
     {
       pubkey: params.systemProgram ?? SystemProgram.programId,
       isSigner: false,
@@ -390,9 +400,12 @@ export function buildClaimRefundInstruction(params: {
   paymentVault: PublicKey;
   bidderPaymentAccount: PublicKey;
   bidderState?: PublicKey;
+  paymentTokenProgram?: PublicKey;
   tokenProgram?: PublicKey;
 }): TransactionInstruction {
   const bidderState = params.bidderState ?? deriveBidderStatePda(params.auction, params.bidder)[0];
+  const paymentTokenProgram =
+    params.paymentTokenProgram ?? params.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
 
   return createInstruction(withDiscriminator(AUCTION_DISCRIMINATORS.claimRefund), [
     { pubkey: params.bidder, isSigner: true, isWritable: true },
@@ -401,11 +414,7 @@ export function buildClaimRefundInstruction(params: {
     { pubkey: bidderState, isSigner: false, isWritable: true },
     { pubkey: params.paymentVault, isSigner: false, isWritable: true },
     { pubkey: params.bidderPaymentAccount, isSigner: false, isWritable: true },
-    {
-      pubkey: params.tokenProgram ?? TOKEN_2022_PROGRAM_ID,
-      isSigner: false,
-      isWritable: false,
-    },
+    { pubkey: paymentTokenProgram, isSigner: false, isWritable: false },
   ]);
 }
 
@@ -415,19 +424,19 @@ export function buildReclaimUnsoldAssetInstruction(params: {
   auction: PublicKey;
   assetVault: PublicKey;
   issuerAssetAccount: PublicKey;
+  assetTokenProgram?: PublicKey;
   tokenProgram?: PublicKey;
 }): TransactionInstruction {
+  const assetTokenProgram =
+    params.assetTokenProgram ?? params.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
+
   return createInstruction(withDiscriminator(AUCTION_DISCRIMINATORS.reclaimUnsoldAsset), [
     { pubkey: params.admin, isSigner: true, isWritable: false },
     { pubkey: params.assetMint, isSigner: false, isWritable: false },
     { pubkey: params.auction, isSigner: false, isWritable: true },
     { pubkey: params.assetVault, isSigner: false, isWritable: true },
     { pubkey: params.issuerAssetAccount, isSigner: false, isWritable: true },
-    {
-      pubkey: params.tokenProgram ?? TOKEN_2022_PROGRAM_ID,
-      isSigner: false,
-      isWritable: false,
-    },
+    { pubkey: assetTokenProgram, isSigner: false, isWritable: false },
   ]);
 }
 
@@ -438,9 +447,12 @@ export function buildWithdrawProceedsInstruction(params: {
   paymentVault: PublicKey;
   issuerPaymentDestination: PublicKey;
   amount: bigint;
+  paymentTokenProgram?: PublicKey;
   tokenProgram?: PublicKey;
 }): TransactionInstruction {
   const payload = new ByteWriter().writeU64(params.amount).toUint8Array();
+  const paymentTokenProgram =
+    params.paymentTokenProgram ?? params.tokenProgram ?? TOKEN_2022_PROGRAM_ID;
 
   return createInstruction(withDiscriminator(AUCTION_DISCRIMINATORS.withdrawProceeds, payload), [
     { pubkey: params.issuer, isSigner: true, isWritable: true },
@@ -448,10 +460,6 @@ export function buildWithdrawProceedsInstruction(params: {
     { pubkey: params.auction, isSigner: false, isWritable: true },
     { pubkey: params.paymentVault, isSigner: false, isWritable: true },
     { pubkey: params.issuerPaymentDestination, isSigner: false, isWritable: true },
-    {
-      pubkey: params.tokenProgram ?? TOKEN_2022_PROGRAM_ID,
-      isSigner: false,
-      isWritable: false,
-    },
+    { pubkey: paymentTokenProgram, isSigner: false, isWritable: false },
   ]);
 }

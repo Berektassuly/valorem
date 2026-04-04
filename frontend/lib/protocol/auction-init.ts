@@ -13,7 +13,7 @@ import {
   type TransactionInstruction,
 } from "@solana/web3.js";
 
-type MintAccountMetadata = {
+export type MintAccountMetadata = {
   publicKey: PublicKey;
   tokenProgram: PublicKey;
   tokenProgramLabel: string;
@@ -24,7 +24,8 @@ export type AuctionInitializationAccounts = {
   auction: PublicKey;
   assetMint: PublicKey;
   paymentMint: PublicKey;
-  tokenProgram: PublicKey;
+  assetTokenProgram: PublicKey;
+  paymentTokenProgram: PublicKey;
   issuerPaymentDestination: PublicKey;
   preInstructions: TransactionInstruction[];
 };
@@ -77,7 +78,7 @@ function formatProgramLabel(address: string) {
   return SUPPORTED_TOKEN_PROGRAMS.get(address)?.label ?? address;
 }
 
-async function loadMintAccountMetadata(params: {
+export async function resolveMintAccountMetadata(params: {
   connection: Connection;
   cluster: string;
   mintAddress: string;
@@ -121,66 +122,72 @@ async function loadMintAccountMetadata(params: {
   } satisfies MintAccountMetadata;
 }
 
-async function resolveIssuerPaymentDestination(params: {
+export async function resolveAssociatedTokenAccount(params: {
   connection: Connection;
-  issuer: PublicKey;
-  paymentMint: MintAccountMetadata;
+  owner: PublicKey;
+  mint: MintAccountMetadata;
+  ownerLabel: string;
+  accountLabel: string;
+  allowOwnerOffCurve?: boolean;
+  createIfMissing?: boolean;
 }) {
-  const issuerPaymentDestination = getAssociatedTokenAddressSync(
-    params.paymentMint.publicKey,
-    params.issuer,
-    false,
-    params.paymentMint.tokenProgram,
+  const associatedTokenAddress = getAssociatedTokenAddressSync(
+    params.mint.publicKey,
+    params.owner,
+    params.allowOwnerOffCurve ?? false,
+    params.mint.tokenProgram,
   );
   const accountResponse = await params.connection.getParsedAccountInfo(
-    issuerPaymentDestination,
+    associatedTokenAddress,
     "confirmed",
   );
   const accountInfo = accountResponse.value;
 
   if (!accountInfo) {
     return {
-      issuerPaymentDestination,
-      preInstructions: [
-        createAssociatedTokenAccountIdempotentInstruction(
-          params.issuer,
-          issuerPaymentDestination,
-          params.issuer,
-          params.paymentMint.publicKey,
-          params.paymentMint.tokenProgram,
-        ),
-      ],
+      address: associatedTokenAddress,
+      preInstructions: params.createIfMissing === false
+        ? []
+        : [
+            createAssociatedTokenAccountIdempotentInstruction(
+              params.owner,
+              associatedTokenAddress,
+              params.owner,
+              params.mint.publicKey,
+              params.mint.tokenProgram,
+            ),
+          ],
     };
   }
 
-  if (!accountInfo.owner.equals(params.paymentMint.tokenProgram)) {
+  if (!accountInfo.owner.equals(params.mint.tokenProgram)) {
     throw new Error(
-      `Issuer payment destination ${issuerPaymentDestination.toBase58()} is owned by ${formatProgramLabel(accountInfo.owner.toBase58())}, but payment mint ${params.paymentMint.publicKey.toBase58()} uses ${params.paymentMint.tokenProgramLabel}.`,
+      `${params.accountLabel} ${associatedTokenAddress.toBase58()} is owned by ${formatProgramLabel(accountInfo.owner.toBase58())}, but mint ${params.mint.publicKey.toBase58()} uses ${params.mint.tokenProgramLabel}.`,
     );
   }
 
   if (!isParsedAccountData(accountInfo.data) || getParsedAccountType(accountInfo.data) !== "account") {
     throw new Error(
-      `Issuer payment destination ${issuerPaymentDestination.toBase58()} is not a token account.`,
+      `${params.accountLabel} ${associatedTokenAddress.toBase58()} is not a token account.`,
     );
   }
 
   const parsedInfo = getParsedInfo(accountInfo.data);
 
-  if (parsedInfo.mint !== params.paymentMint.publicKey.toBase58()) {
+  if (parsedInfo.mint !== params.mint.publicKey.toBase58()) {
     throw new Error(
-      `Issuer payment destination ${issuerPaymentDestination.toBase58()} does not match payment mint ${params.paymentMint.publicKey.toBase58()}.`,
+      `${params.accountLabel} ${associatedTokenAddress.toBase58()} does not match mint ${params.mint.publicKey.toBase58()}.`,
     );
   }
 
-  if (parsedInfo.owner !== params.issuer.toBase58()) {
+  if (parsedInfo.owner !== params.owner.toBase58()) {
     throw new Error(
-      `Issuer payment destination ${issuerPaymentDestination.toBase58()} is not owned by ${params.issuer.toBase58()}.`,
+      `${params.accountLabel} ${associatedTokenAddress.toBase58()} is not owned by ${params.ownerLabel} ${params.owner.toBase58()}.`,
     );
   }
 
   return {
-    issuerPaymentDestination,
+    address: associatedTokenAddress,
     preInstructions: [] satisfies TransactionInstruction[],
   };
 }
@@ -195,13 +202,13 @@ export async function resolveAuctionInitializationAccounts(params: {
 }) {
   const issuer = new PublicKey(params.issuerAddress);
   const [assetMint, paymentMint] = await Promise.all([
-    loadMintAccountMetadata({
+    resolveMintAccountMetadata({
       connection: params.connection,
       cluster: params.cluster,
       mintAddress: params.assetMintAddress,
       label: "asset mint",
     }),
-    loadMintAccountMetadata({
+    resolveMintAccountMetadata({
       connection: params.connection,
       cluster: params.cluster,
       mintAddress: params.paymentMintAddress,
@@ -215,16 +222,12 @@ export async function resolveAuctionInitializationAccounts(params: {
     );
   }
 
-  if (!assetMint.tokenProgram.equals(paymentMint.tokenProgram)) {
-    throw new Error(
-      `Asset mint ${assetMint.publicKey.toBase58()} uses ${assetMint.tokenProgramLabel}, but payment mint ${paymentMint.publicKey.toBase58()} uses ${paymentMint.tokenProgramLabel}. The current initialize_auction flow only supports one shared token program for both mints.`,
-    );
-  }
-
-  const paymentDestination = await resolveIssuerPaymentDestination({
+  const paymentDestination = await resolveAssociatedTokenAccount({
     connection: params.connection,
-    issuer,
-    paymentMint,
+    owner: issuer,
+    mint: paymentMint,
+    ownerLabel: "issuer",
+    accountLabel: "Issuer payment destination",
   });
   const [auction] = deriveAuctionPda(issuer, params.auctionSeed);
 
@@ -233,8 +236,9 @@ export async function resolveAuctionInitializationAccounts(params: {
     auction,
     assetMint: assetMint.publicKey,
     paymentMint: paymentMint.publicKey,
-    tokenProgram: assetMint.tokenProgram,
-    issuerPaymentDestination: paymentDestination.issuerPaymentDestination,
+    assetTokenProgram: assetMint.tokenProgram,
+    paymentTokenProgram: paymentMint.tokenProgram,
+    issuerPaymentDestination: paymentDestination.address,
     preInstructions: paymentDestination.preInstructions,
   } satisfies AuctionInitializationAccounts;
 }

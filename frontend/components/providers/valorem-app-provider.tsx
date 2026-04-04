@@ -33,10 +33,6 @@ import {
   type TransactionInstruction,
 } from "@solana/web3.js";
 import {
-  getAssociatedTokenAddressSync,
-  TOKEN_2022_PROGRAM_ID,
-} from "@solana/spl-token";
-import {
   BIDDER_STATE_ACCOUNT_NAME,
   COMPLIANCE_RECORD_ACCOUNT_NAME,
   ValoremProtocolClient,
@@ -56,7 +52,6 @@ import {
   buildSubmitCommitmentInstruction,
   buildWithdrawProceedsInstruction,
   createRevealSecret,
-  deriveAuctionPda,
   deriveBidderStatePda,
   deriveComplianceRecordPda,
   type BidderStateAccount,
@@ -71,7 +66,11 @@ import {
   protocolMode,
   protocolRpcUrl,
 } from "@/lib/protocol/config";
-import { resolveAuctionInitializationAccounts } from "@/lib/protocol/auction-init";
+import {
+  resolveAssociatedTokenAccount,
+  resolveAuctionInitializationAccounts,
+  resolveMintAccountMetadata,
+} from "@/lib/protocol/auction-init";
 import { getWalletAuctionState } from "@/lib/protocol/runtime-state";
 import { loadRevealSecret, saveRevealSecret } from "@/lib/protocol/secrets";
 import type {
@@ -701,6 +700,54 @@ export function ValoremAppProvider({
     });
   }, []);
 
+  const resolveWalletTokenAccount = useCallback(
+    async (params: {
+      ownerAddress: string;
+      mintAddress: PublicKey;
+      mintLabel: string;
+      ownerLabel: string;
+      accountLabel: string;
+      allowOwnerOffCurve?: boolean;
+      createIfMissing?: boolean;
+    }) => {
+      const owner = new PublicKey(params.ownerAddress);
+      const mint = await resolveMintAccountMetadata({
+        connection,
+        cluster: protocolCluster,
+        mintAddress: params.mintAddress.toBase58(),
+        label: params.mintLabel,
+      });
+      const account = await resolveAssociatedTokenAccount({
+        connection,
+        owner,
+        mint,
+        ownerLabel: params.ownerLabel,
+        accountLabel: params.accountLabel,
+        allowOwnerOffCurve: params.allowOwnerOffCurve,
+        createIfMissing: params.createIfMissing,
+      });
+
+      return {
+        owner,
+        mint,
+        address: account.address,
+        preInstructions: account.preInstructions,
+      };
+    },
+    [connection],
+  );
+
+  const resolveMintProgram = useCallback(
+    async (mintAddress: PublicKey, label: string) =>
+      resolveMintAccountMetadata({
+        connection,
+        cluster: protocolCluster,
+        mintAddress: mintAddress.toBase58(),
+        label,
+      }),
+    [connection],
+  );
+
   const prepareAuctionInitialization = useCallback(
     async (params: InitializeAuctionParams) => {
       if (!activeAddress) {
@@ -729,7 +776,8 @@ export function ValoremAppProvider({
             assetMint: resolved.assetMint,
             paymentMint: resolved.paymentMint,
             issuerPaymentDestination: resolved.issuerPaymentDestination,
-            tokenProgram: resolved.tokenProgram,
+            assetTokenProgram: resolved.assetTokenProgram,
+            paymentTokenProgram: resolved.paymentTokenProgram,
             args: {
               auctionSeed: params.auctionSeed,
               depositAmount: params.depositAmount,
@@ -852,24 +900,28 @@ export function ValoremAppProvider({
           salt: revealSecret.salt,
           createdAt: Date.now(),
         });
+        const bidderPaymentAccount = await resolveWalletTokenAccount({
+          ownerAddress: activeAddress,
+          mintAddress: auction.auction.paymentMint,
+          mintLabel: "payment mint",
+          ownerLabel: "bidder",
+          accountLabel: "Bidder payment account",
+        });
 
         return sendOrSimulate([
+          ...bidderPaymentAccount.preInstructions,
           buildSubmitCommitmentInstruction({
             bidder: new PublicKey(activeAddress),
             paymentMint: auction.auction.paymentMint,
             auction: new PublicKey(auction.auctionAddress),
             commitment,
             paymentVault: auction.auction.paymentVault,
-            bidderPaymentAccount: getAssociatedTokenAddressSync(
-              auction.auction.paymentMint,
-              new PublicKey(activeAddress),
-              false,
-              TOKEN_2022_PROGRAM_ID,
-            ),
+            bidderPaymentAccount: bidderPaymentAccount.address,
+            paymentTokenProgram: bidderPaymentAccount.mint.tokenProgram,
           }),
         ]);
       }),
-    [activeAddress, getAuction, runAction, sendOrSimulate],
+    [activeAddress, getAuction, resolveWalletTokenAccount, runAction, sendOrSimulate],
   );
 
   const revealBid = useCallback(
@@ -917,25 +969,41 @@ export function ValoremAppProvider({
         if (!auction) {
           throw new Error("Auction not found.");
         }
+        const [bidderPaymentAccount, bidderAssetAccount] = await Promise.all([
+          resolveWalletTokenAccount({
+            ownerAddress: activeAddress,
+            mintAddress: auction.auction.paymentMint,
+            mintLabel: "payment mint",
+            ownerLabel: "bidder",
+            accountLabel: "Bidder payment account",
+          }),
+          resolveWalletTokenAccount({
+            ownerAddress: activeAddress,
+            mintAddress: auction.auction.assetMint,
+            mintLabel: "asset mint",
+            ownerLabel: "bidder",
+            accountLabel: "Bidder asset account",
+          }),
+        ]);
 
         return sendOrSimulate([
+          ...bidderPaymentAccount.preInstructions,
+          ...bidderAssetAccount.preInstructions,
           buildSettleCandidateInstruction({
             bidder: new PublicKey(activeAddress),
             assetMint: auction.auction.assetMint,
             paymentMint: auction.auction.paymentMint,
             auction: new PublicKey(auction.auctionAddress),
             paymentVault: auction.auction.paymentVault,
-            bidderPaymentAccount: getAssociatedTokenAddressSync(
-              auction.auction.paymentMint,
-              new PublicKey(activeAddress),
-              false,
-              TOKEN_2022_PROGRAM_ID,
-            ),
+            bidderPaymentAccount: bidderPaymentAccount.address,
             assetVault: auction.auction.assetVault,
+            bidderAssetAccount: bidderAssetAccount.address,
+            assetTokenProgram: bidderAssetAccount.mint.tokenProgram,
+            paymentTokenProgram: bidderPaymentAccount.mint.tokenProgram,
           }),
         ]);
       }),
-    [activeAddress, getAuction, runAction, sendOrSimulate],
+    [activeAddress, getAuction, resolveWalletTokenAccount, runAction, sendOrSimulate],
   );
 
   const claimRefund = useCallback(
@@ -949,23 +1017,27 @@ export function ValoremAppProvider({
         if (!auction) {
           throw new Error("Auction not found.");
         }
+        const bidderPaymentAccount = await resolveWalletTokenAccount({
+          ownerAddress: activeAddress,
+          mintAddress: auction.auction.paymentMint,
+          mintLabel: "payment mint",
+          ownerLabel: "bidder",
+          accountLabel: "Bidder payment account",
+        });
 
         return sendOrSimulate([
+          ...bidderPaymentAccount.preInstructions,
           buildClaimRefundInstruction({
             bidder: new PublicKey(activeAddress),
             paymentMint: auction.auction.paymentMint,
             auction: new PublicKey(auction.auctionAddress),
             paymentVault: auction.auction.paymentVault,
-            bidderPaymentAccount: getAssociatedTokenAddressSync(
-              auction.auction.paymentMint,
-              new PublicKey(activeAddress),
-              false,
-              TOKEN_2022_PROGRAM_ID,
-            ),
+            bidderPaymentAccount: bidderPaymentAccount.address,
+            paymentTokenProgram: bidderPaymentAccount.mint.tokenProgram,
           }),
         ]);
       }),
-    [activeAddress, getAuction, runAction, sendOrSimulate],
+    [activeAddress, getAuction, resolveWalletTokenAccount, runAction, sendOrSimulate],
   );
 
   const advanceToReveal = useCallback(
@@ -1097,6 +1169,10 @@ export function ValoremAppProvider({
         if (!auction) {
           throw new Error("Auction not found.");
         }
+        const paymentMint = await resolveMintProgram(
+          auction.auction.paymentMint,
+          "payment mint",
+        );
 
         return sendOrSimulate([
           buildWithdrawProceedsInstruction({
@@ -1106,10 +1182,11 @@ export function ValoremAppProvider({
             paymentVault: auction.auction.paymentVault,
             issuerPaymentDestination: auction.auction.issuerPaymentDestination,
             amount,
+            paymentTokenProgram: paymentMint.tokenProgram,
           }),
         ]);
       }),
-    [getAuction, runAction, sendOrSimulate],
+    [getAuction, resolveMintProgram, runAction, sendOrSimulate],
   );
 
   const value = useMemo<ValoremAppContextValue>(

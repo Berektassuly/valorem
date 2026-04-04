@@ -112,9 +112,17 @@ describe("resolveAuctionInitializationAccounts", () => {
     const assetMintAddress = "6y6nyKZKU3Jzeps2sonMSKcwk5Y8ZndKyGKoE9pYNCXS";
     const paymentMintAddress = "8BQJRE89EwG4Ew9jMZEvUyMdbC5sma6AsVzTdDEr1xgR";
     const connection = createConnectionMock((address) => {
-      if (address === assetMintAddress || address === paymentMintAddress) {
+      if (address === assetMintAddress) {
         return createParsedAccount({
           owner: TOKEN_2022_PROGRAM_ID,
+          type: "mint",
+          info: { decimals: 6 },
+        });
+      }
+
+      if (address === paymentMintAddress) {
+        return createParsedAccount({
+          owner: TOKEN_PROGRAM_ID,
           type: "mint",
           info: { decimals: 6 },
         });
@@ -133,5 +141,7 @@ describe("resolveAuctionInitializationAccounts", () => {
     });
 
     expect(result.preInstructions).toHaveLength(1);
+    expect(result.assetTokenProgram.equals(TOKEN_2022_PROGRAM_ID)).toBe(true);
+    expect(result.paymentTokenProgram.equals(TOKEN_PROGRAM_ID)).toBe(true);
   });
 });

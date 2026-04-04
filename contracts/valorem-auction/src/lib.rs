@@ -24,10 +24,7 @@ pub mod valorem_auction {
         instructions::deposit_asset(ctx)
     }
 
-    pub fn submit_commitment(
-        ctx: Context<SubmitCommitment>,
-        commitment: [u8; 32],
-    ) -> Result<()> {
+    pub fn submit_commitment(ctx: Context<SubmitCommitment>, commitment: [u8; 32]) -> Result<()> {
         instructions::submit_commitment(ctx, commitment)
     }
 
@@ -35,11 +32,7 @@ pub mod valorem_auction {
         instructions::advance_to_reveal(ctx)
     }
 
-    pub fn reveal_bid(
-        ctx: Context<RevealBid>,
-        bid_amount: u64,
-        salt: [u8; 32],
-    ) -> Result<()> {
+    pub fn reveal_bid(ctx: Context<RevealBid>, bid_amount: u64, salt: [u8; 32]) -> Result<()> {
         instructions::reveal_bid(ctx, bid_amount, salt)
     }
 
@@ -140,9 +133,33 @@ mod tests {
         let bidder_b = Pubkey::new_unique();
         let bidder_c = Pubkey::new_unique();
         let mut auction = sample_auction();
-        auction.insert_ranked_bid(RankedBid { bidder: bidder_a, amount: 120, reveal_timestamp: 5, disqualified: false, settled: false }).unwrap();
-        auction.insert_ranked_bid(RankedBid { bidder: bidder_b, amount: 125, reveal_timestamp: 9, disqualified: false, settled: false }).unwrap();
-        auction.insert_ranked_bid(RankedBid { bidder: bidder_c, amount: 120, reveal_timestamp: 2, disqualified: false, settled: false }).unwrap();
+        auction
+            .insert_ranked_bid(RankedBid {
+                bidder: bidder_a,
+                amount: 120,
+                reveal_timestamp: 5,
+                disqualified: false,
+                settled: false,
+            })
+            .unwrap();
+        auction
+            .insert_ranked_bid(RankedBid {
+                bidder: bidder_b,
+                amount: 125,
+                reveal_timestamp: 9,
+                disqualified: false,
+                settled: false,
+            })
+            .unwrap();
+        auction
+            .insert_ranked_bid(RankedBid {
+                bidder: bidder_c,
+                amount: 120,
+                reveal_timestamp: 2,
+                disqualified: false,
+                settled: false,
+            })
+            .unwrap();
         assert_eq!(auction.ranked_bidders[0].bidder, bidder_b);
         assert_eq!(auction.ranked_bidders[1].bidder, bidder_c);
         assert_eq!(auction.ranked_bidders[2].bidder, bidder_a);
