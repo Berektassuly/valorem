@@ -44,6 +44,12 @@ export type WalletAuctionState = {
   currentBid: bigint | null;
 };
 
+export type AuctionLoadState = {
+  status: "idle" | "loading" | "ready" | "error";
+  errorMessage?: string;
+  updatedAt?: number;
+};
+
 export type TransactionFeedback = {
   status: "idle" | "success" | "error";
   message?: string;

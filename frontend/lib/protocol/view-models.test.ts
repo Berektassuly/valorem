@@ -165,6 +165,13 @@ describe("protocol view models", () => {
     bidderState: null,
     complianceStatus: null,
   });
+  const closedStateWithoutBidder = buildAuctionState({
+    catalogIndex: 4,
+    phase: "reveal",
+    rankedBidders: [{ bidder: SECONDARY_WALLET, amount: 120_000_000n }],
+    bidderState: null,
+    complianceStatus: null,
+  });
   const auctions = [biddingState, refundState, settlementState];
 
   it("maps catalog entries into marketplace cards with live metrics", () => {
@@ -191,6 +198,9 @@ describe("protocol view models", () => {
     );
     expect(getWalletAuctionState(biddingState, walletAddress).actions).toContain(
       "submitCommitment",
+    );
+    expect(getWalletAuctionState(closedStateWithoutBidder, walletAddress).actions).toContain(
+      "wait",
     );
   });
 });

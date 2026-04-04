@@ -48,6 +48,8 @@ export function getWalletAuctionState(
   } else if (!bidderState) {
     if (state.auction.phase === "bidding") {
       actions.push("submitCommitment");
+    } else {
+      actions.push("wait");
     }
   } else if (
     state.auction.phase === "bidding" &&
@@ -78,4 +80,3 @@ export function getWalletAuctionState(
     currentBid: getCurrentBid(state),
   };
 }
-

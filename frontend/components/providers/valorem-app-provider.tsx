@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -57,8 +58,8 @@ import {
   type BidderStateAccount,
   type ComplianceRecordAccount,
 } from "@valorem/sdk";
-import { catalogAuctions } from "@/lib/catalog";
-import type { AuthSession } from "@/lib/marketplace/types";
+import { catalogAuctions, type CatalogAuctionEntry } from "@/lib/catalog";
+import type { AuctionLot, AuthSession } from "@/lib/marketplace/types";
 import {
   auctionProgramId,
   protocolChain,
@@ -74,6 +75,7 @@ import {
 import { getWalletAuctionState } from "@/lib/protocol/runtime-state";
 import { loadRevealSecret, saveRevealSecret } from "@/lib/protocol/secrets";
 import type {
+  AuctionLoadState,
   AuctionRuntimeState,
   ProtocolMode,
   TransactionFeedback,
@@ -97,7 +99,9 @@ type ValoremAppContextValue = {
   authenticate: () => Promise<void>;
   signOut: () => Promise<void>;
   getAuction: (slug: string) => AuctionRuntimeState | null;
+  getAuctionLoadState: (slug: string) => AuctionLoadState;
   getWalletAuctionState: (slug: string) => WalletAuctionState;
+  syncAuctionLot: (lot: AuctionLot) => Promise<void>;
   validateAuctionInitialization: (
     params: InitializeAuctionParams,
   ) => Promise<void>;
@@ -129,6 +133,30 @@ type InitializeAuctionParams = {
   settlementWindowSeconds: number;
   maxBidders: number;
 };
+
+type AuctionSnapshot = NonNullable<
+  Awaited<ReturnType<ValoremProtocolClient["fetchAuctionSnapshot"]>>
+>;
+
+type LinkedAuctionLot = AuctionLot & {
+  contractAddress: string;
+};
+
+type CatalogAuctionSource = {
+  kind: "catalog";
+  slug: string;
+  auctionAddress: string;
+  catalog: CatalogAuctionEntry;
+};
+
+type MarketplaceAuctionSource = {
+  kind: "marketplace";
+  slug: string;
+  auctionAddress: string;
+  lot: LinkedAuctionLot;
+};
+
+type AuctionRuntimeSource = CatalogAuctionSource | MarketplaceAuctionSource;
 
 const ValoremAppContext = createContext<ValoremAppContextValue | null>(null);
 
@@ -444,10 +472,86 @@ function bytesToBase64(bytes: Uint8Array) {
   return window.btoa(binary);
 }
 
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 function delay(milliseconds: number) {
   return new Promise((resolve) => {
     globalThis.setTimeout(resolve, milliseconds);
   });
+}
+
+function formatCompactAddress(value: string) {
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+function isLinkedAuctionLot(lot: AuctionLot): lot is LinkedAuctionLot {
+  return typeof lot.contractAddress === "string" && lot.contractAddress.length > 0;
+}
+
+function buildMarketplaceAuctionCatalog(
+  lot: LinkedAuctionLot,
+  snapshot: AuctionSnapshot,
+): CatalogAuctionEntry {
+  return {
+    slug: lot.slug,
+    lot: `Lot ${lot.id.slice(0, 8).toUpperCase()}`,
+    title: lot.title,
+    category: "Dynamic marketplace",
+    location: "PostgreSQL-backed lot",
+    issuerName: formatCompactAddress(lot.issuerWallet),
+    description: lot.description,
+    artwork: "schema",
+    protocol: {
+      issuer: snapshot.auction.issuer.toBase58(),
+      reviewer: snapshot.auction.reviewerAuthority.toBase58(),
+      assetMint: snapshot.auction.assetMint.toBase58(),
+      paymentMint: snapshot.auction.paymentMint.toBase58(),
+      issuerPaymentDestination: snapshot.auction.issuerPaymentDestination.toBase58(),
+      auctionSeedHex: bytesToHex(snapshot.auction.auctionSeed),
+      auctionAddress: lot.contractAddress,
+    },
+    editorial: {
+      eyebrow: `Auction dossier / ${lot.id.slice(0, 8)}`,
+      summary: lot.description,
+      heroLabel: "Stored asset",
+      issuerNote:
+        "This database-backed lot is hydrated from its linked on-chain contract so participation controls stay aligned with live protocol state.",
+      secondaryTitle: "Live participation state",
+      secondarySummary:
+        "Wallet actions on this lot are derived from the current phase, bidder record, and settlement eligibility.",
+      secondaryArtwork: "schema",
+      diligence: [
+        "The lot record remains sourced from PostgreSQL for marketplace and profile visibility.",
+        "The participation rail reads phase and bidder state directly from the linked Solana auction.",
+        "Reveal secrets remain local to the connected browser and are never read from the database.",
+      ],
+    },
+  };
+}
+
+function buildRuntimeStateFromSource(params: {
+  source: AuctionRuntimeSource;
+  snapshot: AuctionSnapshot;
+  bidderStates: Record<string, BidderStateAccount>;
+  complianceRecords: Record<string, ComplianceRecordAccount>;
+}): AuctionRuntimeState {
+  const catalog =
+    params.source.kind === "catalog"
+      ? params.source.catalog
+      : buildMarketplaceAuctionCatalog(params.source.lot, params.snapshot);
+
+  return {
+    catalog,
+    auctionAddress: params.source.auctionAddress,
+    auction: params.snapshot.auction,
+    bidderStates: params.bidderStates,
+    complianceRecords: params.complianceRecords,
+    minIncrement: 0n,
+    paymentSymbol: "USDC",
+    assetSymbol: "RWA",
+  };
 }
 
 async function signWalletMessage(params: {
@@ -484,7 +588,9 @@ export function ValoremAppProvider({
   const [authSession, setAuthSession] = useState<AuthSession | null>(initialSession);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [rpcState, setRpcState] = useState<Record<string, AuctionRuntimeState>>({});
+  const [auctionLoadState, setAuctionLoadState] = useState<Record<string, AuctionLoadState>>({});
   const [feedback, setFeedback] = useState<TransactionFeedback>({ status: "idle" });
+  const trackedAuctionLotsRef = useRef<Record<string, LinkedAuctionLot>>({});
 
   const walletMode: WalletMode = connectedAddress ? "wallet-standard" : "disconnected";
   const activeAddress = connectedAddress;
@@ -492,21 +598,58 @@ export function ValoremAppProvider({
   const auctionProgramPublicKey = useMemo(() => new PublicKey(auctionProgramId), []);
   const protocolClient = useMemo(() => new ValoremProtocolClient(connection, "confirmed"), [connection]);
 
-  const refresh = useCallback(async () => {
-    const activePublicKey = activeAddress ? new PublicKey(activeAddress) : undefined;
-    const nextEntries: Array<readonly [string, AuctionRuntimeState]> = [];
+  const catalogAuctionSources = useMemo<CatalogAuctionSource[]>(
+    () =>
+      catalogAuctions.map((catalog) => ({
+        kind: "catalog",
+        slug: catalog.slug,
+        auctionAddress: catalog.protocol.auctionAddress,
+        catalog,
+      })),
+    [],
+  );
 
-    for (const [index, catalog] of catalogAuctions.entries()) {
-      if (index > 0) {
-        await delay(120);
+  const getTrackedAuctionSources = useCallback(
+    () =>
+      [
+        ...catalogAuctionSources,
+        ...Object.values(trackedAuctionLotsRef.current).map(
+          (lot) =>
+            ({
+              kind: "marketplace",
+              slug: lot.slug,
+              auctionAddress: lot.contractAddress,
+              lot,
+            }) satisfies MarketplaceAuctionSource,
+        ),
+      ] satisfies AuctionRuntimeSource[],
+    [catalogAuctionSources],
+  );
+
+  const syncAuctionSource = useCallback(
+    async (
+      source: AuctionRuntimeSource,
+      options?: {
+        markLoading?: boolean;
+      },
+    ) => {
+      if (options?.markLoading) {
+        setAuctionLoadState((current) => ({
+          ...current,
+          [source.slug]: {
+            status: "loading",
+            updatedAt: Date.now(),
+          },
+        }));
       }
 
-      const auctionAddress = new PublicKey(catalog.protocol.auctionAddress);
+      const activePublicKey = activeAddress ? new PublicKey(activeAddress) : undefined;
+      const auctionAddress = new PublicKey(source.auctionAddress);
 
       try {
         const snapshot = await protocolClient.fetchAuctionSnapshot(auctionAddress, activePublicKey);
         if (!snapshot) {
-          continue;
+          throw new Error("Live auction state is not yet available for this contract.");
         }
 
         const bidderStates = await fetchBidderStatesForAuction({
@@ -528,44 +671,116 @@ export function ValoremAppProvider({
           complianceRecords[activeAddress] = snapshot.complianceRecord;
         }
 
-        nextEntries.push([
-          catalog.slug,
-          {
-            catalog,
-            auctionAddress: catalog.protocol.auctionAddress,
-            auction: snapshot.auction,
-            bidderStates,
-            complianceRecords,
-            minIncrement: 0n,
-            paymentSymbol: "USDC",
-            assetSymbol: "RWA",
-          } satisfies AuctionRuntimeState,
-        ]);
-      } catch {
-        continue;
+        const runtimeState = buildRuntimeStateFromSource({
+          source,
+          snapshot,
+          bidderStates,
+          complianceRecords,
+        });
+
+        startTransition(() => {
+          setRpcState((current) => ({
+            ...current,
+            [source.slug]: runtimeState,
+          }));
+          setAuctionLoadState((current) => ({
+            ...current,
+            [source.slug]: {
+              status: "ready",
+              updatedAt: Date.now(),
+            },
+          }));
+        });
+
+        return runtimeState;
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unable to load live auction state.";
+
+        startTransition(() => {
+          setAuctionLoadState((current) => ({
+            ...current,
+            [source.slug]: {
+              status: "error",
+              errorMessage,
+              updatedAt: Date.now(),
+            },
+          }));
+        });
+
+        return null;
       }
+    },
+    [activeAddress, auctionProgramPublicKey, connection, protocolClient],
+  );
+
+  const refresh = useCallback(async () => {
+    const sources = getTrackedAuctionSources();
+
+    for (const [index, source] of sources.entries()) {
+      if (index > 0) {
+        await delay(120);
+      }
+
+      await syncAuctionSource(source);
     }
+  }, [getTrackedAuctionSources, syncAuctionSource]);
 
-    const nextRpcState = Object.fromEntries(nextEntries);
+  const syncAuctionLot = useCallback(
+    async (lot: AuctionLot) => {
+      if (!isLinkedAuctionLot(lot)) {
+        delete trackedAuctionLotsRef.current[lot.slug];
+        setAuctionLoadState((current) => ({
+          ...current,
+          [lot.slug]: {
+            status: "idle",
+            updatedAt: Date.now(),
+          },
+        }));
+        return;
+      }
 
-    startTransition(() => {
-      setRpcState(nextRpcState);
-    });
-  }, [activeAddress, auctionProgramPublicKey, connection, protocolClient]);
+      trackedAuctionLotsRef.current[lot.slug] = lot;
+      await syncAuctionSource(
+        {
+          kind: "marketplace",
+          slug: lot.slug,
+          auctionAddress: lot.contractAddress,
+          lot,
+        },
+        { markLoading: true },
+      );
+    },
+    [syncAuctionSource],
+  );
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   const auctions = useMemo(() => {
-    return catalogAuctions
+    const catalogSlugs = new Set(catalogAuctions.map((catalog) => catalog.slug));
+    const catalogEntries = catalogAuctions
       .map((catalog) => rpcState[catalog.slug] ?? null)
       .filter((auction): auction is AuctionRuntimeState => auction !== null);
+    const marketplaceEntries = Object.entries(rpcState)
+      .filter(([slug]) => !catalogSlugs.has(slug))
+      .map(([, auction]) => auction);
+
+    return [...catalogEntries, ...marketplaceEntries];
   }, [rpcState]);
 
   const getAuction = useCallback(
-    (slug: string) => auctions.find((auction) => auction.catalog.slug === slug) ?? null,
-    [auctions],
+    (slug: string) => rpcState[slug] ?? null,
+    [rpcState],
+  );
+
+  const getAuctionLoadState = useCallback(
+    (slug: string) =>
+      auctionLoadState[slug] ?? {
+        status: "idle",
+      },
+    [auctionLoadState],
   );
 
   const getWalletStateForSlug = useCallback(
@@ -575,7 +790,7 @@ export function ValoremAppProvider({
         return {
           bidderState: null,
           complianceRecord: null,
-          actions: ["connect"],
+          actions: activeAddress ? ["wait"] : ["connect"],
           isLeadingCandidate: false,
           isRefundEligible: false,
           currentBid: null,
@@ -1206,7 +1421,9 @@ export function ValoremAppProvider({
       authenticate,
       signOut,
       getAuction,
+      getAuctionLoadState,
       getWalletAuctionState: getWalletStateForSlug,
+      syncAuctionLot,
       validateAuctionInitialization,
       initializeAuction,
       submitCommitment,
@@ -1231,6 +1448,7 @@ export function ValoremAppProvider({
       connectedWallet,
       feedback,
       getAuction,
+      getAuctionLoadState,
       getWalletStateForSlug,
       initializeAuction,
       isAuthenticating,
@@ -1242,6 +1460,7 @@ export function ValoremAppProvider({
       slashCandidate,
       slashUnrevealed,
       submitCommitment,
+      syncAuctionLot,
       validateAuctionInitialization,
       wallets,
       walletMode,

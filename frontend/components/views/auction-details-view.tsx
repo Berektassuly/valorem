@@ -1,4 +1,5 @@
 import { AssetArtwork } from "@/components/asset-artwork";
+import { AuctionActionPanel } from "@/components/protocol/auction-action-panel";
 import {
   ActionLink,
   MetricGrid,
@@ -102,6 +103,8 @@ export function AuctionDetailsView({
         </Panel>
 
         <div className="space-y-6">
+          <AuctionActionPanel lot={lot} />
+
           <Panel tone="dark" className="space-y-4">
             <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/70">
               Ownership state
@@ -218,4 +221,3 @@ export function AuctionDetailsView({
     </div>
   );
 }
-
