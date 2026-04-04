@@ -32,7 +32,10 @@ import {
   Transaction,
   type TransactionInstruction,
 } from "@solana/web3.js";
-import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
+import {
+  getAssociatedTokenAddressSync,
+  TOKEN_2022_PROGRAM_ID,
+} from "@solana/spl-token";
 import {
   BIDDER_STATE_ACCOUNT_NAME,
   COMPLIANCE_RECORD_ACCOUNT_NAME,
@@ -68,6 +71,7 @@ import {
   protocolMode,
   protocolRpcUrl,
 } from "@/lib/protocol/config";
+import { resolveAuctionInitializationAccounts } from "@/lib/protocol/auction-init";
 import { getWalletAuctionState } from "@/lib/protocol/runtime-state";
 import { loadRevealSecret, saveRevealSecret } from "@/lib/protocol/secrets";
 import type {
@@ -95,19 +99,12 @@ type ValoremAppContextValue = {
   signOut: () => Promise<void>;
   getAuction: (slug: string) => AuctionRuntimeState | null;
   getWalletAuctionState: (slug: string) => WalletAuctionState;
-  initializeAuction: (params: {
-    reviewerAddress: string;
-    assetMintAddress: string;
-    paymentMintAddress: string;
-    auctionSeed: Uint8Array;
-    depositAmount: bigint;
-    reservePrice: bigint;
-    assetAmount: bigint;
-    biddingWindowSeconds: number;
-    revealWindowSeconds: number;
-    settlementWindowSeconds: number;
-    maxBidders: number;
-  }) => Promise<{ signature: string; contractAddress: string }>;
+  validateAuctionInitialization: (
+    params: InitializeAuctionParams,
+  ) => Promise<void>;
+  initializeAuction: (
+    params: InitializeAuctionParams,
+  ) => Promise<{ signature: string; contractAddress: string }>;
   submitCommitment: (slug: string, bidAmount: bigint) => Promise<void>;
   revealBid: (slug: string) => Promise<void>;
   settleCandidate: (slug: string) => Promise<void>;
@@ -118,6 +115,20 @@ type ValoremAppContextValue = {
   slashCandidate: (slug: string, walletAddress: string) => Promise<void>;
   slashUnrevealed: (slug: string, walletAddress: string) => Promise<void>;
   withdrawProceeds: (slug: string, amount: bigint) => Promise<void>;
+};
+
+type InitializeAuctionParams = {
+  reviewerAddress: string;
+  assetMintAddress: string;
+  paymentMintAddress: string;
+  auctionSeed: Uint8Array;
+  depositAmount: bigint;
+  reservePrice: bigint;
+  assetAmount: bigint;
+  biddingWindowSeconds: number;
+  revealWindowSeconds: number;
+  settlementWindowSeconds: number;
+  maxBidders: number;
 };
 
 const ValoremAppContext = createContext<ValoremAppContextValue | null>(null);
@@ -252,11 +263,26 @@ async function sendWalletTransaction(params: {
   connection: Connection;
   instructions: TransactionInstruction[];
 }) {
-  const transaction = new Transaction();
-  for (const instruction of params.instructions) {
-    transaction.add(instruction);
-  }
+  const transaction = new Transaction().add(...params.instructions);
   transaction.feePayer = new PublicKey(params.accountAddress);
+
+  const simulation = await params.connection.simulateTransaction(transaction);
+  if (simulation.value.err) {
+    const simulationError =
+      typeof simulation.value.err === "string"
+        ? simulation.value.err
+        : JSON.stringify(simulation.value.err);
+    const logSummary = simulation.value.logs
+      ? summarizeTransactionLogs(simulation.value.logs)
+      : "";
+
+    throw new Error(
+      logSummary
+        ? `Transaction simulation failed before wallet confirmation.\n${logSummary}`
+        : `Transaction simulation failed before wallet confirmation.\n${simulationError}`,
+    );
+  }
+
   const { blockhash, lastValidBlockHeight } = await params.connection.getLatestBlockhash(
     "confirmed",
   );
@@ -284,10 +310,24 @@ async function sendWalletTransaction(params: {
       transaction: serialized,
       options: {
         commitment: "confirmed",
+        preflightCommitment: "confirmed",
       },
     });
-
-    return bs58.encode(result.signature);
+    const signature = bs58.encode(result.signature);
+    const confirmation = await params.connection.confirmTransaction(
+      {
+        blockhash,
+        lastValidBlockHeight,
+        signature,
+      },
+      "confirmed",
+    );
+    if (confirmation.value.err) {
+      throw new Error(
+        `Transaction ${signature} failed to confirm: ${JSON.stringify(confirmation.value.err)}`,
+      );
+    }
+    return signature;
   }
 
   if (params.wallet.features.includes(SolanaSignTransaction)) {
@@ -303,7 +343,7 @@ async function sendWalletTransaction(params: {
     const signature = await params.connection.sendRawTransaction(result.signedTransaction, {
       preflightCommitment: "confirmed",
     });
-    await params.connection.confirmTransaction(
+    const confirmation = await params.connection.confirmTransaction(
       {
         blockhash,
         lastValidBlockHeight,
@@ -311,6 +351,11 @@ async function sendWalletTransaction(params: {
       },
       "confirmed",
     );
+    if (confirmation.value.err) {
+      throw new Error(
+        `Transaction ${signature} failed to confirm: ${JSON.stringify(confirmation.value.err)}`,
+      );
+    }
     return signature;
   }
 
@@ -656,61 +701,95 @@ export function ValoremAppProvider({
     });
   }, []);
 
-  const initializeAuction = useCallback(
-    async (params: {
-      reviewerAddress: string;
-      assetMintAddress: string;
-      paymentMintAddress: string;
-      auctionSeed: Uint8Array;
-      depositAmount: bigint;
-      reservePrice: bigint;
-      assetAmount: bigint;
-      biddingWindowSeconds: number;
-      revealWindowSeconds: number;
-      settlementWindowSeconds: number;
-      maxBidders: number;
-    }) => {
-      if (!connectedWallet || !activeAddress) {
+  const prepareAuctionInitialization = useCallback(
+    async (params: InitializeAuctionParams) => {
+      if (!activeAddress) {
         throw new Error("Connect a wallet before creating an auction.");
       }
 
-      const issuer = new PublicKey(activeAddress);
-      const paymentMint = new PublicKey(params.paymentMintAddress);
-      const issuerPaymentDestination = getAssociatedTokenAddressSync(
-        paymentMint,
-        issuer,
-        false,
-        TOKEN_2022_PROGRAM_ID,
-      );
-      const [auction] = deriveAuctionPda(issuer, params.auctionSeed);
+      const resolved = await resolveAuctionInitializationAccounts({
+        connection,
+        cluster: protocolCluster,
+        issuerAddress: activeAddress,
+        assetMintAddress: params.assetMintAddress,
+        paymentMintAddress: params.paymentMintAddress,
+        auctionSeed: params.auctionSeed,
+      });
       const now = Math.floor(Date.now() / 1000);
       const biddingEndAt = now + params.biddingWindowSeconds;
       const revealEndAt = biddingEndAt + params.revealWindowSeconds;
 
+      return {
+        auction: resolved.auction,
+        instructions: [
+          ...resolved.preInstructions,
+          buildInitializeAuctionInstruction({
+            issuer: resolved.issuer,
+            reviewer: new PublicKey(params.reviewerAddress),
+            assetMint: resolved.assetMint,
+            paymentMint: resolved.paymentMint,
+            issuerPaymentDestination: resolved.issuerPaymentDestination,
+            tokenProgram: resolved.tokenProgram,
+            args: {
+              auctionSeed: params.auctionSeed,
+              depositAmount: params.depositAmount,
+              reservePrice: params.reservePrice,
+              assetAmount: params.assetAmount,
+              biddingEndAt: BigInt(biddingEndAt),
+              revealEndAt: BigInt(revealEndAt),
+              settlementWindow: BigInt(params.settlementWindowSeconds),
+              maxBidders: params.maxBidders,
+            },
+          }),
+        ],
+      };
+    },
+    [activeAddress, connection],
+  );
+
+  const validateAuctionInitialization = useCallback(
+    async (params: InitializeAuctionParams) => {
+      if (!activeAddress) {
+        throw new Error("Connect a wallet before creating an auction.");
+      }
+
+      const prepared = await prepareAuctionInitialization(params);
+      const transaction = new Transaction().add(...prepared.instructions);
+      transaction.feePayer = new PublicKey(activeAddress);
+
+      const simulation = await connection.simulateTransaction(transaction);
+      if (simulation.value.err) {
+        const simulationError =
+          typeof simulation.value.err === "string"
+            ? simulation.value.err
+            : JSON.stringify(simulation.value.err);
+        const logSummary = simulation.value.logs
+          ? summarizeTransactionLogs(simulation.value.logs)
+          : "";
+
+        throw new Error(
+          logSummary
+            ? `Auction initialization preflight failed.\n${logSummary}`
+            : `Auction initialization preflight failed.\n${simulationError}`,
+        );
+      }
+    },
+    [activeAddress, connection, prepareAuctionInitialization],
+  );
+
+  const initializeAuction = useCallback(
+    async (params: InitializeAuctionParams) => {
+      if (!connectedWallet || !activeAddress) {
+        throw new Error("Connect a wallet before creating an auction.");
+      }
+
       try {
+        const prepared = await prepareAuctionInitialization(params);
         const signature = await sendWalletTransaction({
           wallet: connectedWallet,
           accountAddress: activeAddress,
           connection,
-          instructions: [
-            buildInitializeAuctionInstruction({
-              issuer,
-              reviewer: new PublicKey(params.reviewerAddress),
-              assetMint: new PublicKey(params.assetMintAddress),
-              paymentMint,
-              issuerPaymentDestination,
-              args: {
-                auctionSeed: params.auctionSeed,
-                depositAmount: params.depositAmount,
-                reservePrice: params.reservePrice,
-                assetAmount: params.assetAmount,
-                biddingEndAt: BigInt(biddingEndAt),
-                revealEndAt: BigInt(revealEndAt),
-                settlementWindow: BigInt(params.settlementWindowSeconds),
-                maxBidders: params.maxBidders,
-              },
-            }),
-          ],
+          instructions: prepared.instructions,
         });
 
         setFeedback({
@@ -721,7 +800,7 @@ export function ValoremAppProvider({
 
         return {
           signature,
-          contractAddress: auction.toBase58(),
+          contractAddress: prepared.auction.toBase58(),
         };
       } catch (error) {
         console.error("Transaction failed:", error);
@@ -741,7 +820,7 @@ export function ValoremAppProvider({
         throw new Error(message);
       }
     },
-    [activeAddress, connectedWallet, connection],
+    [activeAddress, connectedWallet, connection, prepareAuctionInitialization],
   );
 
   const submitCommitment = useCallback(
@@ -1051,6 +1130,7 @@ export function ValoremAppProvider({
       signOut,
       getAuction,
       getWalletAuctionState: getWalletStateForSlug,
+      validateAuctionInitialization,
       initializeAuction,
       submitCommitment,
       revealBid,
@@ -1085,6 +1165,7 @@ export function ValoremAppProvider({
       slashCandidate,
       slashUnrevealed,
       submitCommitment,
+      validateAuctionInitialization,
       wallets,
       walletMode,
       withdrawProceeds,

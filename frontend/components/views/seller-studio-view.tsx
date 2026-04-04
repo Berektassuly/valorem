@@ -53,6 +53,7 @@ export function SellerStudioView({
     activeAddress,
     authSession,
     feedback,
+    validateAuctionInitialization,
     initializeAuction,
   } = useValoremApp();
   const [title, setTitle] = useState("");
@@ -111,9 +112,26 @@ export function SellerStudioView({
     }
 
     setIsSubmitting(true);
-    setLocalMessage("Converting media and creating the database draft...");
+    const auctionSeed = createAuctionSeed();
+    let createdLotSlug: string | null = null;
 
     try {
+      setLocalMessage("Validating on-chain auction configuration...");
+      await validateAuctionInitialization({
+        reviewerAddress: marketplaceProtocolDefaults.reviewerAddress,
+        assetMintAddress: marketplaceProtocolDefaults.assetMint,
+        paymentMintAddress: marketplaceProtocolDefaults.paymentMint,
+        auctionSeed,
+        depositAmount: marketplaceProtocolDefaults.depositAmount,
+        reservePrice: marketplaceProtocolDefaults.reservePrice,
+        assetAmount: marketplaceProtocolDefaults.assetAmount,
+        biddingWindowSeconds: marketplaceProtocolDefaults.biddingWindowSeconds,
+        revealWindowSeconds: marketplaceProtocolDefaults.revealWindowSeconds,
+        settlementWindowSeconds: marketplaceProtocolDefaults.settlementWindowSeconds,
+        maxBidders: marketplaceProtocolDefaults.maxBidders,
+      });
+
+      setLocalMessage("Converting media and creating the database draft...");
       const imageBase64 = await fileToDataUrl(imageFile);
 
       const createResponse = await fetch("/api/auctions", {
@@ -133,6 +151,7 @@ export function SellerStudioView({
       if (!createResponse.ok || !createPayload.lot) {
         throw new Error(createPayload.error ?? "Unable to create the lot draft.");
       }
+      createdLotSlug = createPayload.lot.slug;
 
       setLocalMessage("Draft stored. Waiting for wallet confirmation...");
 
@@ -140,7 +159,7 @@ export function SellerStudioView({
         reviewerAddress: marketplaceProtocolDefaults.reviewerAddress,
         assetMintAddress: marketplaceProtocolDefaults.assetMint,
         paymentMintAddress: marketplaceProtocolDefaults.paymentMint,
-        auctionSeed: createAuctionSeed(),
+        auctionSeed,
         depositAmount: marketplaceProtocolDefaults.depositAmount,
         reservePrice: marketplaceProtocolDefaults.reservePrice,
         assetAmount: marketplaceProtocolDefaults.assetAmount,
@@ -174,12 +193,17 @@ export function SellerStudioView({
       router.push(`/auctions/${linkPayload.lot.slug}`);
       router.refresh();
     } catch (error) {
-      setLocalMessage(
+      const baseMessage =
         error instanceof Error
           ? error.message
           : typeof error === "string"
             ? error
-            : "Unable to create the lot.",
+            : "Unable to create the lot.";
+
+      setLocalMessage(
+        createdLotSlug
+          ? `Draft ${createdLotSlug} was created in PostgreSQL, but the on-chain step failed.\n${baseMessage}`
+          : baseMessage,
       );
     } finally {
       setIsSubmitting(false);
