@@ -56,7 +56,7 @@ const publicEnvSchema = z
       .default("devnet"),
     NEXT_PUBLIC_VALOREM_DEFAULT_REVIEWER: publicKeySchema,
     NEXT_PUBLIC_VALOREM_DEFAULT_PAYMENT_MINT: publicKeySchema,
-    NEXT_PUBLIC_VALOREM_DEFAULT_DEPOSIT_AMOUNT: z.coerce.bigint().positive().default(250_000_000n),
+    NEXT_PUBLIC_VALOREM_DEFAULT_DEPOSIT_AMOUNT: z.coerce.bigint().positive().default(3_000_000n),
     NEXT_PUBLIC_VALOREM_DEFAULT_RESERVE_PRICE: z.coerce.bigint().positive().default(2_500_000_000n),
     NEXT_PUBLIC_VALOREM_DEFAULT_ASSET_AMOUNT: z.coerce.bigint().positive().default(1n),
     NEXT_PUBLIC_VALOREM_DEFAULT_BIDDING_WINDOW_SECONDS: z.coerce
