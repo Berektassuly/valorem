@@ -55,24 +55,6 @@ const publicEnvSchema = z
       .enum(["devnet", "mainnet-beta"])
       .default("devnet"),
     NEXT_PUBLIC_VALOREM_DEFAULT_REVIEWER: publicKeySchema,
-    NEXT_PUBLIC_VALOREM_DEFAULT_ASSET_MINT: z
-      .string()
-      .trim()
-      .default("")
-      .superRefine((value, ctx) => {
-        if (!value) {
-          return;
-        }
-
-        try {
-          new PublicKey(value);
-        } catch {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "must be a valid base58 Solana public key.",
-          });
-        }
-      }),
     NEXT_PUBLIC_VALOREM_DEFAULT_PAYMENT_MINT: publicKeySchema,
     NEXT_PUBLIC_VALOREM_DEFAULT_DEPOSIT_AMOUNT: z.coerce.bigint().positive().default(250_000_000n),
     NEXT_PUBLIC_VALOREM_DEFAULT_RESERVE_PRICE: z.coerce.bigint().positive().default(2_500_000_000n),
@@ -94,7 +76,7 @@ const publicEnvSchema = z
       .default(24 * 60 * 60),
     NEXT_PUBLIC_VALOREM_DEFAULT_MAX_BIDDERS: z.coerce.number().int().min(1).default(16),
   })
-  .strict();
+  .strip();
 
 const serverEnvSchema = z
   .object({
@@ -102,7 +84,7 @@ const serverEnvSchema = z
     VALOREM_AUTH_SECRET: requiredStringSchema(),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })
-  .strict();
+  .strip();
 
 type PublicEnv = z.infer<typeof publicEnvSchema>;
 type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -141,7 +123,7 @@ export const publicEnv = validateEnv(
     NEXT_PUBLIC_SOLANA_RPC_URL: process.env.NEXT_PUBLIC_SOLANA_RPC_URL,
     NEXT_PUBLIC_SOLANA_CLUSTER: process.env.NEXT_PUBLIC_SOLANA_CLUSTER,
     NEXT_PUBLIC_VALOREM_DEFAULT_REVIEWER: process.env.NEXT_PUBLIC_VALOREM_DEFAULT_REVIEWER,
-    NEXT_PUBLIC_VALOREM_DEFAULT_ASSET_MINT: process.env.NEXT_PUBLIC_VALOREM_DEFAULT_ASSET_MINT,
+
     NEXT_PUBLIC_VALOREM_DEFAULT_PAYMENT_MINT: process.env.NEXT_PUBLIC_VALOREM_DEFAULT_PAYMENT_MINT,
     NEXT_PUBLIC_VALOREM_DEFAULT_DEPOSIT_AMOUNT:
       process.env.NEXT_PUBLIC_VALOREM_DEFAULT_DEPOSIT_AMOUNT,

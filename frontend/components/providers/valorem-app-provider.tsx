@@ -1,6 +1,7 @@
 "use client";
 
 import bs58 from "bs58";
+import { TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import {
   createContext,
   startTransition,
@@ -74,6 +75,7 @@ import {
   resolveAssociatedTokenAccount,
   resolveAuctionInitializationAccounts,
   resolveMintAccountMetadata,
+  resolvePaymentMintAndIssuerAccounts,
 } from "@/lib/protocol/auction-init";
 import { buildPerLotAssetMintInstructions } from "@/lib/protocol/mint-factory";
 import { getWalletAuctionState } from "@/lib/protocol/runtime-state";
@@ -548,6 +550,26 @@ function buildMarketplaceAuctionCatalog(
   };
 }
 
+/** Well-known devnet and mainnet mint addresses mapped to ticker symbols. */
+const KNOWN_PAYMENT_MINTS: Record<string, string> = {
+  // Devnet USDC (Circle faucet)
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU": "USDC",
+  // Mainnet USDC
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: "USDC",
+  // Mainnet USDT
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: "USDT",
+};
+
+function resolvePaymentSymbol(mintAddress: PublicKey): string {
+  const symbol = KNOWN_PAYMENT_MINTS[mintAddress.toBase58()];
+  if (symbol) {
+    return symbol;
+  }
+
+  const addr = mintAddress.toBase58();
+  return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
+}
+
 function buildRuntimeStateFromSource(params: {
   source: AuctionRuntimeSource;
   snapshot: AuctionSnapshot;
@@ -566,7 +588,7 @@ function buildRuntimeStateFromSource(params: {
     bidderStates: params.bidderStates,
     complianceRecords: params.complianceRecords,
     minIncrement: 0n,
-    paymentSymbol: "USDC",
+    paymentSymbol: resolvePaymentSymbol(params.snapshot.auction.paymentMint),
     assetSymbol: "RWA",
   };
 }
@@ -987,12 +1009,16 @@ export function ValoremAppProvider({
       }
 
       const issuer = new PublicKey(activeAddress);
-      const partialSigners: Keypair[] = [];
-      const mintPreInstructions: TransactionInstruction[] = [];
-      let effectiveAssetMintAddress: string;
-      let issuerAssetAccount: PublicKey | undefined;
+      const now = Math.floor(Date.now() / 1000);
+      const biddingEndAt = now + params.biddingWindowSeconds;
+      const revealEndAt = biddingEndAt + params.revealWindowSeconds;
 
-      // When no asset mint is provided, create a fresh per-lot Token-2022 mint.
+      // ── Per-lot asset mint path ───────────────────────────────────────
+      // The fresh Keypair does not exist on-chain yet, so we MUST NOT call
+      // resolveMintAccountMetadata for the asset mint.  We know it will be
+      // Token-2022 because buildPerLotAssetMintInstructions creates it
+      // under TOKEN_2022_PROGRAM_ID.  Only the payment mint is resolved
+      // via RPC.
       if (!params.assetMintAddress) {
         const mintResult = await buildPerLotAssetMintInstructions({
           connection,
@@ -1000,25 +1026,74 @@ export function ValoremAppProvider({
           assetAmount: params.assetAmount,
         });
 
-        partialSigners.push(mintResult.mintKeypair);
-        mintPreInstructions.push(...mintResult.instructions);
-        effectiveAssetMintAddress = mintResult.mintKeypair.publicKey.toBase58();
-        issuerAssetAccount = mintResult.issuerAssetAccount;
-      } else {
-        effectiveAssetMintAddress = params.assetMintAddress;
+        const paymentAccounts = await resolvePaymentMintAndIssuerAccounts({
+          connection,
+          cluster: protocolCluster,
+          issuerAddress: activeAddress,
+          paymentMintAddress: params.paymentMintAddress,
+          auctionSeed: params.auctionSeed,
+        });
+
+        const assetMintPubkey = mintResult.mintKeypair.publicKey;
+        const assetTokenProgram = TOKEN_2022_PROGRAM_ID;
+
+        const initInstruction = buildInitializeAuctionInstruction({
+          issuer,
+          reviewer: new PublicKey(params.reviewerAddress),
+          assetMint: assetMintPubkey,
+          paymentMint: paymentAccounts.paymentMint,
+          issuerPaymentDestination: paymentAccounts.issuerPaymentDestination,
+          assetTokenProgram,
+          paymentTokenProgram: paymentAccounts.paymentTokenProgram,
+          args: {
+            auctionSeed: params.auctionSeed,
+            depositAmount: params.depositAmount,
+            reservePrice: params.reservePrice,
+            assetAmount: params.assetAmount,
+            biddingEndAt: BigInt(biddingEndAt),
+            revealEndAt: BigInt(revealEndAt),
+            settlementWindow: BigInt(params.settlementWindowSeconds),
+            maxBidders: params.maxBidders,
+          },
+        });
+
+        const assetVault = deriveAuctionVaultAddress(
+          assetMintPubkey,
+          paymentAccounts.auction,
+          assetTokenProgram,
+        );
+
+        const depositInstruction = buildDepositAssetInstruction({
+          issuer,
+          assetMint: assetMintPubkey,
+          auction: paymentAccounts.auction,
+          assetVault,
+          issuerAssetAccount: mintResult.issuerAssetAccount,
+          assetTokenProgram,
+        });
+
+        return {
+          auction: paymentAccounts.auction,
+          partialSigners: [mintResult.mintKeypair],
+          instructions: [
+            ...mintResult.instructions,
+            ...paymentAccounts.preInstructions,
+            initInstruction,
+            depositInstruction,
+          ],
+        };
       }
 
+      // ── Pre-existing asset mint path ──────────────────────────────────
+      // Both mints already exist on-chain, so full RPC resolution is safe.
       const resolved = await resolveAuctionInitializationAccounts({
         connection,
         cluster: protocolCluster,
         issuerAddress: activeAddress,
-        assetMintAddress: effectiveAssetMintAddress,
+        assetMintAddress: params.assetMintAddress,
         paymentMintAddress: params.paymentMintAddress,
         auctionSeed: params.auctionSeed,
       });
-      const now = Math.floor(Date.now() / 1000);
-      const biddingEndAt = now + params.biddingWindowSeconds;
-      const revealEndAt = biddingEndAt + params.revealWindowSeconds;
 
       const initInstruction = buildInitializeAuctionInstruction({
         issuer: resolved.issuer,
@@ -1040,18 +1115,13 @@ export function ValoremAppProvider({
         },
       });
 
-      // Derive the asset vault (ATA of the auction PDA) and build the deposit
-      // instruction so the lot is immediately ready for bidding.
       const assetVault = deriveAuctionVaultAddress(
         resolved.assetMint,
         resolved.auction,
         resolved.assetTokenProgram,
       );
 
-      // The issuer asset account defaults to the ATA derived in per-lot mint
-      // creation, or must be resolved for a pre-existing mint.
       const resolvedIssuerAssetAccount =
-        issuerAssetAccount ??
         (await resolveAssociatedTokenAccount({
           connection,
           owner: issuer,
@@ -1076,9 +1146,8 @@ export function ValoremAppProvider({
 
       return {
         auction: resolved.auction,
-        partialSigners,
+        partialSigners: [],
         instructions: [
-          ...mintPreInstructions,
           ...resolved.preInstructions,
           initInstruction,
           depositInstruction,

@@ -242,3 +242,43 @@ export async function resolveAuctionInitializationAccounts(params: {
     preInstructions: paymentDestination.preInstructions,
   } satisfies AuctionInitializationAccounts;
 }
+
+/**
+ * Resolves only the payment mint and issuer payment-destination ATA.
+ *
+ * Used by the per-lot asset-mint flow where the asset mint is generated
+ * in-transaction and cannot be looked up on-chain beforehand.
+ */
+export async function resolvePaymentMintAndIssuerAccounts(params: {
+  connection: Connection;
+  cluster: string;
+  issuerAddress: string;
+  paymentMintAddress: string;
+  auctionSeed: Uint8Array;
+}) {
+  const issuer = new PublicKey(params.issuerAddress);
+  const paymentMint = await resolveMintAccountMetadata({
+    connection: params.connection,
+    cluster: params.cluster,
+    mintAddress: params.paymentMintAddress,
+    label: "payment mint",
+  });
+
+  const paymentDestination = await resolveAssociatedTokenAccount({
+    connection: params.connection,
+    owner: issuer,
+    mint: paymentMint,
+    ownerLabel: "issuer",
+    accountLabel: "Issuer payment destination",
+  });
+  const [auction] = deriveAuctionPda(issuer, params.auctionSeed);
+
+  return {
+    issuer,
+    auction,
+    paymentMint: paymentMint.publicKey,
+    paymentTokenProgram: paymentMint.tokenProgram,
+    issuerPaymentDestination: paymentDestination.address,
+    preInstructions: paymentDestination.preInstructions,
+  };
+}

@@ -2,7 +2,6 @@ import { publicEnv } from "@/lib/env";
 
 export const marketplaceProtocolDefaults = {
   reviewerAddress: publicEnv.NEXT_PUBLIC_VALOREM_DEFAULT_REVIEWER,
-  assetMint: publicEnv.NEXT_PUBLIC_VALOREM_DEFAULT_ASSET_MINT,
   paymentMint: publicEnv.NEXT_PUBLIC_VALOREM_DEFAULT_PAYMENT_MINT,
   depositAmount: publicEnv.NEXT_PUBLIC_VALOREM_DEFAULT_DEPOSIT_AMOUNT,
   reservePrice: publicEnv.NEXT_PUBLIC_VALOREM_DEFAULT_RESERVE_PRICE,

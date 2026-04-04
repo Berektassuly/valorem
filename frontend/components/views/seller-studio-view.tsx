@@ -61,7 +61,11 @@ export function SellerStudioView({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
-  const shouldShowFeedback = Boolean(feedback.message && feedback.message !== localMessage);
+  const shouldShowFeedback = Boolean(
+    feedback.message &&
+      feedback.message !== localMessage &&
+      !(localMessage && localMessage.includes(feedback.message)),
+  );
 
   const sessionMatchesWallet =
     authSession && activeAddress ? authSession.walletAddress === activeAddress : false;
@@ -106,7 +110,7 @@ export function SellerStudioView({
 
     if (!hasProtocolDefaults) {
       setLocalMessage(
-        "Protocol defaults are missing. Configure the reviewer, asset mint, and payment mint before creating lots.",
+        "Protocol defaults are missing. Configure the reviewer and payment mint before creating lots.",
       );
       return;
     }

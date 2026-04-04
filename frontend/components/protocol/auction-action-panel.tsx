@@ -389,7 +389,7 @@ export function AuctionActionPanel({ lot }: { lot: AuctionLot }) {
         <div className="space-y-3 border border-line bg-surface p-4">
           <label className="space-y-2">
             <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted">
-              Commit bid (USDC)
+              Commit bid ({auction.paymentSymbol})
             </span>
             <input
               value={bidInput}
