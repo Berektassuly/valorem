@@ -88,4 +88,4 @@ jobs:
 
       - name: Anchor test
         run: |
-          docker compose run --rm workspace bash -lc "NO_DNA=1 npm install && NO_DNA=1 npm run protocol:test"
+          docker compose run --rm workspace bash -lc "mkdir -p /root/.config/solana && if [ ! -f /root/.config/solana/id.json ]; then solana-keygen new --no-bip39-passphrase --silent -f -o /root/.config/solana/id.json; fi && NO_DNA=1 npm install && NO_DNA=1 npm run protocol:test"
