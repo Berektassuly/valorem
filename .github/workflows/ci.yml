@@ -39,13 +39,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Linux frontend native binaries
+      - name: Install Linux native binaries
         run: |
+          # npm ci on a Windows-generated lockfile can miss Linux optional native packages.
           LIGHTNINGCSS_VERSION="$(node -p "require('./frontend/package.json').optionalDependencies['lightningcss-linux-x64-gnu']")"
           TAILWIND_OXIDE_VERSION="$(node -p "require('./frontend/package.json').optionalDependencies['@tailwindcss/oxide-linux-x64-gnu']")"
-          npm install --workspace frontend --no-save \
+          ROLLUP_VERSION="$(node -p "require('./package-lock.json').packages['node_modules/rollup'].optionalDependencies['@rollup/rollup-linux-x64-gnu']")"
+          npm install --workspace frontend --no-save --ignore-scripts \
             "lightningcss-linux-x64-gnu@${LIGHTNINGCSS_VERSION}" \
             "@tailwindcss/oxide-linux-x64-gnu@${TAILWIND_OXIDE_VERSION}"
+          npm install --no-save --ignore-scripts \
+            "@rollup/rollup-linux-x64-gnu@${ROLLUP_VERSION}"
 
       - name: Lint
         run: npm run lint
