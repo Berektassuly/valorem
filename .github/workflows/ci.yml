@@ -41,8 +41,8 @@ jobs:
 
       - name: Install Linux frontend native binaries
         run: |
-          LIGHTNINGCSS_VERSION="$(node -p "require('./frontend/node_modules/lightningcss/package.json').version")"
-          TAILWIND_OXIDE_VERSION="$(node -p "require('./frontend/node_modules/@tailwindcss/oxide/package.json').version")"
+          LIGHTNINGCSS_VERSION="$(node -p "require('./frontend/package.json').optionalDependencies['lightningcss-linux-x64-gnu']")"
+          TAILWIND_OXIDE_VERSION="$(node -p "require('./frontend/package.json').optionalDependencies['@tailwindcss/oxide-linux-x64-gnu']")"
           npm install --workspace frontend --no-save \
             "lightningcss-linux-x64-gnu@${LIGHTNINGCSS_VERSION}" \
             "@tailwindcss/oxide-linux-x64-gnu@${TAILWIND_OXIDE_VERSION}"
