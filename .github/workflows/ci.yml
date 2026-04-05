@@ -51,6 +51,9 @@ jobs:
           npm install --no-save --ignore-scripts \
             "@rollup/rollup-linux-x64-gnu@${ROLLUP_VERSION}"
 
+      - name: Prepare frontend CI environment
+        run: cp frontend/.env.example frontend/.env.local
+
       - name: Lint
         run: npm run lint
 
