@@ -9,11 +9,20 @@ export default async function ProfilePage() {
     return <ProfileView session={null} lots={[]} />;
   }
 
-  try {
-    const lots = await listProfileAuctions(session.walletAddress);
-    return <ProfileView session={session} lots={lots} />;
-  } catch {
-    return <ProfileView session={session} lots={[]} hasDatabaseError />;
-  }
-}
+  let lots: Awaited<ReturnType<typeof listProfileAuctions>> = [];
+  let hasDatabaseError = false;
 
+  try {
+    lots = await listProfileAuctions(session.walletAddress);
+  } catch {
+    hasDatabaseError = true;
+  }
+
+  return (
+    <ProfileView
+      session={session}
+      lots={lots}
+      hasDatabaseError={hasDatabaseError}
+    />
+  );
+}

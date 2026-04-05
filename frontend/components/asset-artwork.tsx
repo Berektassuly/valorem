@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 import type { ArtworkVariant } from "@/lib/site-data";
 
@@ -40,9 +41,12 @@ export function AssetArtwork({
       )}
     >
       {imageSrc ? (
-        <img
+        <Image
           src={imageSrc}
           alt={imageAlt ?? label ?? "Auction lot image"}
+          fill
+          sizes="100vw"
+          unoptimized
           className="absolute inset-0 h-full w-full object-cover"
         />
       ) : null}

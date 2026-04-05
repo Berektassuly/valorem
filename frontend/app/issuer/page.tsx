@@ -5,23 +5,21 @@ import { hasMarketplaceProtocolDefaults } from "@/lib/marketplace/config";
 
 export default async function IssuerPage() {
   const session = await getAuthSession();
+  const hasSession = Boolean(session);
+  const hasProtocolDefaults = hasMarketplaceProtocolDefaults();
+  let hasDatabaseError = false;
 
   try {
     await ensureMarketplaceSchema();
-    return (
-      <SellerStudioView
-        hasSession={Boolean(session)}
-        hasProtocolDefaults={hasMarketplaceProtocolDefaults()}
-      />
-    );
   } catch {
-    return (
-      <SellerStudioView
-        hasSession={Boolean(session)}
-        hasDatabaseError
-        hasProtocolDefaults={hasMarketplaceProtocolDefaults()}
-      />
-    );
+    hasDatabaseError = true;
   }
-}
 
+  return (
+    <SellerStudioView
+      hasSession={hasSession}
+      hasDatabaseError={hasDatabaseError}
+      hasProtocolDefaults={hasProtocolDefaults}
+    />
+  );
+}

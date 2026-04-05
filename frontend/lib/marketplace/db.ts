@@ -2,9 +2,7 @@ import postgres from "postgres";
 import { env } from "@/lib/env";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __valoremSql__: ReturnType<typeof postgres> | undefined;
-  // eslint-disable-next-line no-var
   var __valoremSchemaPromise__: Promise<void> | undefined;
 }
 

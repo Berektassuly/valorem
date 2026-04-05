@@ -2,11 +2,14 @@ import { MarketplaceView } from "@/components/views/marketplace-view";
 import { listMarketplaceAuctions } from "@/lib/marketplace/auction-store";
 
 export default async function MarketplacePage() {
-  try {
-    const lots = await listMarketplaceAuctions();
-    return <MarketplaceView lots={lots} />;
-  } catch {
-    return <MarketplaceView lots={[]} hasDatabaseError />;
-  }
-}
+  let lots: Awaited<ReturnType<typeof listMarketplaceAuctions>> = [];
+  let hasDatabaseError = false;
 
+  try {
+    lots = await listMarketplaceAuctions();
+  } catch {
+    hasDatabaseError = true;
+  }
+
+  return <MarketplaceView lots={lots} hasDatabaseError={hasDatabaseError} />;
+}
