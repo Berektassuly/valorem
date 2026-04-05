@@ -1,5 +1,7 @@
 # Valorem Monorepo
 
+![Valorem Overview](./docs/image.png)
+
 Valorem is organized around three primary work areas:
 
 - `frontend/` for application development
